@@ -9,6 +9,7 @@
                 "-g",
                 "-std=c++20",
                 "${workspaceFolder}/main.cpp",
+                "${workspaceFolder}/Deck.cpp",
                 "-o",
                 "${workspaceFolder}/main"
             ],
