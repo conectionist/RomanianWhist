@@ -24,7 +24,10 @@ void GameStructureInitializer::initialize(Scoreboard &scoreboard,
 
     vector<unsigned int> gameNumbers;
 
-    if(structure == GameStructure::S_181)
+    // TODO: 
+    // for the moment we'll only consider the standard structure (1-8-1)
+    // we'll implement 8-1-8 later
+    if(true/*structure == GameStructure::S_181*/)
     {
         for(unsigned int i = 0 ; i < players.size() ; i++)
             gameNumbers.push_back(1);
