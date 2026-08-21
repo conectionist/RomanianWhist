@@ -1,8 +1,11 @@
 #include "Round.h"
 
-Round::Round(unsigned int handCount_, RoundType type_) : handCount(handCount_),
-                                                         trump(nullptr),
-                                                         type(type_)
+Round::Round(unsigned int _handCount, 
+             const Player* player,
+             RoundType _type) : handCount(_handCount),
+                                trump(nullptr),
+                                type(_type),
+                                firstPlayer(player)
 {}
 
 void Round::addHand(const Hand &hand)
@@ -30,12 +33,17 @@ unsigned int Round::getHandCount()
     return handCount;
 }
 
-void Round::setFirstPlayer(Player *player)
+void Round::setFirstPlayer(const Player *player)
 {
     firstPlayer = player;
 }
 
-Player *Round::getFirstPlayer()
+const Player *Round::getFirstPlayer() const
 {
     return firstPlayer;
+}
+
+void Round::setRoundType(RoundType _type)
+{
+    type = _type;
 }

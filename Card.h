@@ -30,6 +30,12 @@ struct Card
 {
     Rank rank;
     Suit suit;
+
+    Card() : rank(Rank::Two), suit(Suit::Clubs)
+    {}
+
+    Card(Rank _rank, Suit _suit) : rank(_rank), suit(_suit)
+    {}
 };
 
 #endif

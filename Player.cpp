@@ -1,6 +1,6 @@
 #include "Player.h"
 
-Player::Player(const string &name_) : name(std::move(name_))
+Player::Player(const string &_name) : name(std::move(_name))
 {}
 
 string Player::getName()

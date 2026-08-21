@@ -20,17 +20,18 @@ private:
     Card* trump;
     unsigned int handCount;
     RoundType type;
-    Player* firstPlayer;
+    const Player* firstPlayer;
 
 public:
-    Round(unsigned int handCount_, RoundType type_ = RoundType::Normal);
+    Round(unsigned int _handCount, const Player* player, RoundType _type = RoundType::Normal);
     void addHand(const Hand& hand);
     void addResult(Player* player, int wonHands);
     void setTrumpCard(Card* card);
     Card* getTrumpCard();
     unsigned int getHandCount();
-    void setFirstPlayer(Player* player);
-    Player* getFirstPlayer();
+    void setFirstPlayer(const Player* player);
+    const Player* getFirstPlayer() const;
+    void setRoundType(RoundType _type);
 };
 
 #endif

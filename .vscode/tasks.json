@@ -13,6 +13,8 @@
                 "${workspaceFolder}/Hand.cpp",
                 "${workspaceFolder}/Round.cpp",
                 "${workspaceFolder}/Player.cpp",
+                "${workspaceFolder}/Scoreboard.cpp",
+                "${workspaceFolder}/GameStructureInitializer.cpp",
                 "-o",
                 "${workspaceFolder}/main"
             ],

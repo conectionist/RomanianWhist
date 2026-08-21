@@ -11,7 +11,7 @@ private:
     string name;
 
 public:
-    Player(const string& name_);
+    Player(const string& _name);
     string getName();
 };
 
