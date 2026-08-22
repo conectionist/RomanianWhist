@@ -1,6 +1,8 @@
 #include "Scoreboard.h"
 
 #include <utility>
+#include <algorithm>
+#include <vector>
 
 Scoreboard::Scoreboard() : currentRound(0)
 {
@@ -101,4 +103,91 @@ unsigned int Scoreboard::getRoundCount() const
 unsigned int Scoreboard::getCurrentRoundIndex() const
 {
     return currentRound;
+}
+
+void Scoreboard::calculateScores(PlayerList& players)
+{
+    Round& currentRound = getCurrentRound();
+    
+    for(auto& player : players)
+    {
+        const string& playerName = player.getName();
+        
+        // Get the bet and actual result for this player
+        unsigned int bid = currentRound.getBet(playerName);
+        unsigned int actual = currentRound.getActual(playerName);
+        
+        int roundScore = calculateRoundScore(bid, actual);
+        player.addToScore(roundScore);
+        
+        // Update streak counters
+        if(shouldCountForStreaks(currentRound))
+        {
+            if(bid == actual)
+            {
+                player.incrementConsecutiveWins();
+                player.resetConsecutiveLosses();
+                
+                // Check for 5 consecutive wins
+                if(player.getConsecutiveWins() == 5)
+                {
+                    player.addToScore(10); // Bonus for 5 consecutive wins
+                }
+            }
+            else
+            {
+                player.incrementConsecutiveLosses();
+                player.resetConsecutiveWins();
+                
+                // Check for 5 consecutive losses
+                if(player.getConsecutiveLosses() == 5)
+                {
+                    player.addToScore(-10); // Penalty for 5 consecutive losses
+                }
+            }
+        }
+    }
+}
+
+void Scoreboard::commitRoundScores(PlayerList& players)
+{
+    // Commit round scores to total scores
+    for(auto& player : players)
+    {
+        player.resetCurrentRoundScore();
+    }
+}
+
+int Scoreboard::calculateRoundScore(unsigned int bid, unsigned int actual) const
+{
+    if(bid == actual)
+    {
+        return 5 + static_cast<int>(bid);
+    }
+    else
+    {
+        return -static_cast<int>(std::abs(static_cast<int>(bid) - static_cast<int>(actual)));
+    }
+}
+
+bool Scoreboard::shouldCountForStreaks(const Round& round) const
+{
+    // 1-card rounds don't count for streaks
+    return round.getHandCount() != 1;
+}
+
+vector<pair<string, int>> Scoreboard::getPlayerScores(const PlayerList& players) const
+{
+    vector<pair<string, int>> playerScores;
+    
+    for(const auto& player : players)
+    {
+        playerScores.emplace_back(player.getName(), player.getTotalScore());
+    }
+    
+    // Sort by total score (descending)
+    std::sort(playerScores.begin(), playerScores.end(), 
+              [](const auto& a, const auto& b) { return a.second > b.second; });
+    
+    return playerScores;
 }

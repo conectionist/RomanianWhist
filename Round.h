@@ -34,10 +34,14 @@ public:
     void setResult(PlayerList::iterator player, unsigned int wonHands);
     void setTrumpCard(Card* card);
     Card* getTrumpCard();
-    unsigned int getHandCount();
+    unsigned int getHandCount() const;
     void setFirstPlayer(PlayerList::iterator player);
     PlayerList::iterator getFirstPlayer() const;
     void setRoundType(RoundType _type);
+    
+    unsigned int getBet(const string& playerName) const;
+    unsigned int getActual(const string& playerName) const;
+    bool hasBet(const string& playerName) const;
 };
 
 #endif

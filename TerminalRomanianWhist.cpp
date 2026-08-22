@@ -1,11 +1,14 @@
 #include "TerminalRomanianWhist.h"
 
 #include <iostream>
+#include <unordered_map>
+#include <iomanip>
+#include <algorithm>
 
 #include "Hand.h"
 #include "Player.h"
 
-using std::cin, std::cout, std::endl;
+using std::cin, std::cout, std::endl, std::left, std::setw;
 
 void TerminalRomanianWhist::startGame()
 {
@@ -77,6 +80,10 @@ void TerminalRomanianWhist::loop()
         game.shuffleDeck();
         game.dealCards();
 
+        cout << "\n=========================\n";
+
+        cout << "Joc de " << game.getCurrentRoundHandCount() << endl;
+
         auto* trump = game.getCurrentTrumpCard();
         if(trump)
             cout << "The trump card is " << trump->toString() << endl;
@@ -93,18 +100,46 @@ void TerminalRomanianWhist::loop()
         }
 
         playCurrentRoundTricks();
+        
+        // Calculate scores (but don't reset yet so we can display round scores)
+        game.calculateScores();
+        displayScoreboard();
+        
+        // Now commit the round scores to total scores
+        game.commitRoundScores();
+        
         game.completeCurrentRound();
+
+        cout << "\n=========================\n";
     }
+    
+    // Display final results
+    cout << "\n=========================\n";
+    cout << "GAME OVER" << endl;
+    cout << "=========================\n";
+    displayFinalResults();
 }
 
 void TerminalRomanianWhist::playCurrentRoundTricks()
 {
     const unsigned int trickCount = game.getCurrentRoundHandCount();
+    
+    // Track tricks won by each player
+    std::unordered_map<std::string, unsigned int> tricksWon;
+    
+    // Initialize all players with 0 tricks won
+    auto firstPlayer = game.getFirstPlayerOfTheRound();
+    auto currentPlayer = firstPlayer;
+    for(unsigned int i = 0 ; i < game.getPlayerCount() ; i++)
+    {
+        tricksWon[currentPlayer->getName()] = 0;
+        currentPlayer = game.getNextPlayer(currentPlayer);
+    }
 
     for(unsigned int trickIndex = 0 ; trickIndex < trickCount ; trickIndex++)
     {
         Hand trick;
-        auto currentPlayer = game.getFirstPlayerOfTheRound();
+        currentPlayer = game.getFirstPlayerOfTheRound();
 
         cout << endl << "Trick " << (trickIndex + 1) << " of " << trickCount << endl;
 
@@ -128,8 +163,70 @@ void TerminalRomanianWhist::playCurrentRoundTricks()
         game.addHandToCurrentRound(trick);
         game.setFirstPlayerOfTheRound(winner);
 
+        // Track tricks won
+        tricksWon[winner->getName()]++;
+        
         cout << winner->getName() << " wins the trick." << endl;
     }
+    
+    // Set the results for each player
+    currentPlayer = firstPlayer;
+    for(unsigned int i = 0 ; i < game.getPlayerCount() ; i++)
+    {
+        unsigned int wonTricks = tricksWon[currentPlayer->getName()];
+        game.setResult(currentPlayer, wonTricks);
+        currentPlayer = game.getNextPlayer(currentPlayer);
+    }
+}
+
+void TerminalRomanianWhist::displayScoreboard()
+{
+    cout << "\n=========================" << endl;
+    cout << "SCOREBOARD" << endl;
+    cout << "=========================" << endl;
+    cout << left << setw(20) << "Player" << setw(15) << "Round Score" << setw(15) << "Total Score" << endl;
+    cout << "--------------------------------------------------------" << endl;
+    
+    auto roundScores = game.getPlayerRoundScores();
+    
+    for(const auto& [name, scores] : roundScores)
+    {
+        cout << left << setw(20) << name 
+             << setw(15) << scores.first 
+             << setw(15) << scores.second << endl;
+    }
+    cout << "=========================" << endl;
+    
+    // Show current leader
+    auto playerScores = game.getPlayerScores();
+    if(!playerScores.empty())
+    {
+        cout << "Current leader: " << playerScores[0].first << " with " << playerScores[0].second << " points" << endl;
+    }
+    cout << "=========================" << endl;
+}
+
+void TerminalRomanianWhist::displayFinalResults()
+{
+    cout << "\n=========================" << endl;
+    cout << "FINAL RESULTS" << endl;
+    cout << "=========================" << endl;
+    cout << left << setw(20) << "Player" << setw(15) << "Total Score" << endl;
+    cout << "--------------------------------------------------------" << endl;
+    
+    auto playerScores = game.getPlayerScores();
+    
+    for(const auto& [name, score] : playerScores)
+    {
+        cout << left << setw(20) << name << setw(15) << score << endl;
+    }
+    cout << "=========================" << endl;
+    
+    if(!playerScores.empty())
+    {
+        cout << "🏆 WINNER: " << playerScores[0].first << " with " << playerScores[0].second << " points! 🏆" << endl;
+    }
+    cout << "=========================" << endl;
 }
 
 void TerminalRomanianWhist::initializeTest()

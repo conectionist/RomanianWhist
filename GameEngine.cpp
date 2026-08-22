@@ -103,6 +103,11 @@ void GameEngine::placeBet(PlayerList::iterator player, unsigned int bet)
     scoreboard.getCurrentRound().setBet(player, bet);
 }
 
+void GameEngine::setResult(PlayerList::iterator player, unsigned int wonHands)
+{
+    scoreboard.getCurrentRound().setResult(player, wonHands);
+}
+
 void GameEngine::clearAllPlayerHands()
 {
     for(auto& player : players)
@@ -144,6 +149,35 @@ void GameEngine::completeCurrentRound()
         status = GameStatus::Finished;
     else
         scoreboard.incrementCurrentRound();
+}
+
+void GameEngine::calculateScores()
+{
+    scoreboard.calculateScores(players);
+}
+
+void GameEngine::commitRoundScores()
+{
+    scoreboard.commitRoundScores(players);
+}
+
+vector<pair<string, int>> GameEngine::getPlayerScores() const
+{
+    return scoreboard.getPlayerScores(players);
+}
+
+vector<pair<string, pair<int, int>>> GameEngine::getPlayerRoundScores() const
+{
+    vector<pair<string, pair<int, int>>> roundScores;
+    
+    for(const auto& player : players)
+    {
+        roundScores.emplace_back(player.getName(), 
+                               pair<int, int>(player.getCurrentRoundScore(), 
+                                             player.getTotalScore()));
+    }
+    
+    return roundScores;
 }
 
 bool GameEngine::cardBeats(const Card& candidate, const Card& currentBest, Suit ledSuit)

@@ -33,7 +33,7 @@ Card *Round::getTrumpCard()
     return trump;
 }
 
-unsigned int Round::getHandCount()
+unsigned int Round::getHandCount() const
 {
     return handCount;
 }
@@ -51,4 +51,29 @@ PlayerList::iterator Round::getFirstPlayer() const
 void Round::setRoundType(RoundType _type)
 {
     type = _type;
+}
+
+unsigned int Round::getBet(const string& playerName) const
+{
+    auto it = bets.find(playerName);
+    if(it != bets.end())
+    {
+        return it->second.guess;
+    }
+    return 0;
+}
+
+unsigned int Round::getActual(const string& playerName) const
+{
+    auto it = bets.find(playerName);
+    if(it != bets.end())
+    {
+        return it->second.actual;
+    }
+    return 0;
+}
+
+bool Round::hasBet(const string& playerName) const
+{
+    return bets.find(playerName) != bets.end();
 }

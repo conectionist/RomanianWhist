@@ -15,6 +15,8 @@ private:
     void initialize();
     void loop();
     void playCurrentRoundTricks();
+    void displayScoreboard();
+    void displayFinalResults();
 
     void initializeTest();
 

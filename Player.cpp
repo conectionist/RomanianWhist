@@ -3,10 +3,10 @@
 #include <algorithm>
 #include <utility>
 
-Player::Player(const string &_name) : name(std::move(_name))
+Player::Player(const string &_name) : name(std::move(_name)), totalScore(0), currentRoundScore(0), consecutiveWins(0), consecutiveLosses(0)
 {}
 
-string Player::getName()
+string Player::getName() const
 {
     return name;
 }
@@ -50,4 +50,57 @@ bool Player::hasSuit(Suit suit) const
 unsigned int Player::getBet() const
 {
     return 0;
+}
+
+int Player::getTotalScore() const
+{
+    return totalScore;
+}
+
+int Player::getCurrentRoundScore() const
+{
+    return currentRoundScore;
+}
+
+void Player::addToScore(int points)
+{
+    currentRoundScore += points;
+}
+
+void Player::resetCurrentRoundScore()
+{
+    totalScore += currentRoundScore;
+    currentRoundScore = 0;
+}
+
+void Player::incrementConsecutiveWins()
+{
+    consecutiveWins++;
+    consecutiveLosses = 0;
+}
+
+void Player::incrementConsecutiveLosses()
+{
+    consecutiveLosses++;
+    consecutiveWins = 0;
+}
+
+void Player::resetConsecutiveWins()
+{
+    consecutiveWins = 0;
+}
+
+void Player::resetConsecutiveLosses()
+{
+    consecutiveLosses = 0;
+}
+
+unsigned int Player::getConsecutiveWins() const
+{
+    return consecutiveWins;
+}
+
+unsigned int Player::getConsecutiveLosses() const
+{
+    return consecutiveLosses;
 }

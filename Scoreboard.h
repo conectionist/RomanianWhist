@@ -5,8 +5,10 @@
 #include "PlayerList.h"
 
 #include <vector>
+#include <utility>
 
 using std::vector;
+using std::pair;
 
 enum class GameStructure
 {
@@ -33,9 +35,17 @@ public:
     vector<Round> getAllRounds();
     unsigned int getRoundCount() const;
     unsigned int getCurrentRoundIndex() const;
+    
+    void calculateScores(PlayerList& players);
+    void commitRoundScores(PlayerList& players);
+    
+    // Data access methods for display purposes
+    vector<std::pair<string, int>> getPlayerScores(const PlayerList& players) const;
 
 private:
     void addRound(Round&& round);
+    int calculateRoundScore(unsigned int bid, unsigned int actual) const;
+    bool shouldCountForStreaks(const Round& round) const;
 };
 
 #endif

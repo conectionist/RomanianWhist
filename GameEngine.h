@@ -7,9 +7,11 @@
 
 #include <string>
 #include <vector>
+#include <utility>
 
 using std::string;
 using std::vector;
+using std::pair;
 
 enum class GameStatus
 {
@@ -45,11 +47,18 @@ public:
     PlayerList::iterator getNextPlayer(PlayerList::iterator player);
     unsigned int getPlayerCount();
     void placeBet(PlayerList::iterator player, unsigned int bet);
+    void setResult(PlayerList::iterator player, unsigned int wonHands);
     unsigned int getCurrentRoundHandCount();
     void addHandToCurrentRound(const Hand& hand);
     PlayerList::iterator determineTrickWinner(const Hand& trick, PlayerList::iterator firstPlayer);
     void setFirstPlayerOfTheRound(PlayerList::iterator player);
     void completeCurrentRound();
+    void calculateScores();
+    void commitRoundScores();
+    
+    // Data access methods for display purposes
+    vector<std::pair<string, int>> getPlayerScores() const;
+    vector<std::pair<string, std::pair<int, int>>> getPlayerRoundScores() const;
 
 private:
     void clearAllPlayerHands();
