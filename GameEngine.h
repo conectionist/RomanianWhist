@@ -1,12 +1,14 @@
 #ifndef GAME_ENGINE_H
 #define GAME_ENGINE_H
 
-#include "Player.h"
+#include "PlayerList.h"
 #include "Scoreboard.h"
 #include "Deck.h"
 
+#include <string>
 #include <vector>
 
+using std::string;
 using std::vector;
 
 enum class GameStatus
@@ -19,8 +21,7 @@ enum class GameStatus
 class GameEngine
 {
 private:
-// TODO: replace this with a custor PlayerList class that supports iterators and replace every Player* thoughout the codebase with PlayerList::iterator
-    vector<Player> players;
+    PlayerList players;
     Scoreboard scoreboard;
     Deck deck;
     GameStatus status;
@@ -40,9 +41,10 @@ public:
     void dealCards();
     Card* getCurrentTrumpCard();
     void createPlayers(const vector<string>& playerNames);
-    Player* getFirstPlayerOfTheRound();
+    PlayerList::iterator getFirstPlayerOfTheRound();
+    PlayerList::iterator getNextPlayer(PlayerList::iterator player);
     unsigned int getPlayerCount();
-    void placeBet(Player* player, unsigned int bet);
+    void placeBet(PlayerList::iterator player, unsigned int bet);
 
 private:
     void clearAllPlayerHands();

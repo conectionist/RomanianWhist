@@ -2,19 +2,18 @@
 #define HAND_H
 
 #include "Card.h"
+#include "PlayerList.h"
 
 #include <vector>
 
 using std::vector;
-
-class Player;
 
 class Hand
 {
 private:
     vector<Card*> playedCards;
     Suit downSuit;
-    Player* winner;
+    PlayerList::iterator winner;
 
 public:
     void addPlayedCard(Card* card);
@@ -23,8 +22,8 @@ public:
     void setDownSuit(Suit suit);
     Suit getDownSuit();
 
-    void setWinner(Player* player);
-    Player* getWinner();
+    void setWinner(PlayerList::iterator player);
+    PlayerList::iterator getWinner();
 };
 
 #endif

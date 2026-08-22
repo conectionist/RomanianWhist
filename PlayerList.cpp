@@ -1,5 +1,7 @@
 #include "PlayerList.h"
 
+#include <iterator>
+#include <stdexcept>
 #include <utility>
 
 PlayerList::PlayerList(const vector<string>& playerNames)
@@ -42,22 +44,40 @@ PlayerList::size_type PlayerList::size() const
 
 Player& PlayerList::at(size_type index)
 {
-    return players.at(index);
+    if(index >= players.size())
+        throw std::out_of_range("PlayerList index out of range");
+
+    auto player = players.begin();
+    std::advance(player, index);
+
+    return *player;
 }
 
 const Player& PlayerList::at(size_type index) const
 {
-    return players.at(index);
+    if(index >= players.size())
+        throw std::out_of_range("PlayerList index out of range");
+
+    auto player = players.begin();
+    std::advance(player, index);
+
+    return *player;
 }
 
 Player& PlayerList::operator[](size_type index)
 {
-    return players[index];
+    auto player = players.begin();
+    std::advance(player, index);
+
+    return *player;
 }
 
 const Player& PlayerList::operator[](size_type index) const
 {
-    return players[index];
+    auto player = players.begin();
+    std::advance(player, index);
+
+    return *player;
 }
 
 PlayerList::iterator PlayerList::begin()

@@ -4,21 +4,23 @@
 #include "Player.h"
 
 #include <cstddef>
+#include <list>
 #include <string>
 #include <vector>
 
+using std::list;
 using std::string;
 using std::vector;
 
 class PlayerList
 {
 private:
-    vector<Player> players;
+    list<Player> players;
 
 public:
-    using iterator = vector<Player>::iterator;
-    using const_iterator = vector<Player>::const_iterator;
-    using size_type = vector<Player>::size_type;
+    using iterator = list<Player>::iterator;
+    using const_iterator = list<Player>::const_iterator;
+    using size_type = list<Player>::size_type;
 
     PlayerList() = default;
     explicit PlayerList(const vector<string>& playerNames);

@@ -2,7 +2,7 @@
 #define SCOREBOARD_H
 
 #include "Round.h"
-#include "Player.h"
+#include "PlayerList.h"
 
 #include <vector>
 
@@ -25,7 +25,7 @@ public:
     void initialize(const GameStructure& structure, 
                     bool endWithForeheadAndHidden, 
                     bool all1GamesAreForehead,
-                    const vector<Player>& players);
+                    PlayerList& players);
     
     Round& getRound(int i);
     void incrementCurrentRound();

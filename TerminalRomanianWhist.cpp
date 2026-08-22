@@ -82,15 +82,13 @@ void TerminalRomanianWhist::loop()
         else
             cout << "Game of 8. No trump card!" << endl;
 
-        auto* currentPlayer = game.getFirstPlayerOfTheRound();
+        auto currentPlayer = game.getFirstPlayerOfTheRound();
 
-        // TODO
-        // replace this with an iterator loop after implementing operator== for players and adding id so we don't have to compare by names
-        for(int i = 0 ; i < game.getPlayerCount() ; i++)
+        for(unsigned int i = 0 ; i < game.getPlayerCount() ; i++)
         {
             unsigned int bet = currentPlayer->getBet();
             game.placeBet(currentPlayer, bet);
-            currentPlayer = currentPlayer->getNext();
+            currentPlayer = game.getNextPlayer(currentPlayer);
         }
 
         /*
@@ -100,7 +98,7 @@ void TerminalRomanianWhist::loop()
             add each had to the round's hands vector
             decide who won based on the round's hand vector and set him/her as the new first player            
         */
-        for(int i = 0 ; i < game.getPlayerCount() ; i++)
+        for(unsigned int i = 0 ; i < game.getPlayerCount() ; i++)
         {
             
         }

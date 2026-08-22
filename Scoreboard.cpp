@@ -9,17 +9,9 @@ Scoreboard::Scoreboard() : currentRound(0)
 void Scoreboard::initialize(const GameStructure &structure, 
                             bool endWithForeheadAndHidden, 
                             bool all1GamesAreForehead, 
-                            const vector<Player> &players)
+                            PlayerList &players)
 {
-    unsigned int playerIndex = 0;
-
-    auto incrementPlayerIndex = [&playerIndex, &players]()
-    {
-        if(playerIndex == players.size() - 1)
-            playerIndex = 0;
-        else
-            playerIndex++;
-    };
+    auto currentPlayer = players.first();
 
     vector<unsigned int> gameNumbers;
 
@@ -45,14 +37,14 @@ void Scoreboard::initialize(const GameStructure &structure,
 
         for(int i : gameNumbers)
         {
-            Round r(i, &players[playerIndex]);
+            Round r(i, currentPlayer);
 
             if(i == 1 && all1GamesAreForehead)
                 r.setRoundType(RoundType::Forehead);  
 
             addRound(std::move(r));
 
-            incrementPlayerIndex();            
+            currentPlayer = players.next(currentPlayer);
         }
     }
 
@@ -62,11 +54,11 @@ void Scoreboard::initialize(const GameStructure &structure,
 
         for(auto type : roundTypes)
         {
-            Round r(1, &players[playerIndex], type);
+            Round r(1, currentPlayer, type);
 
             addRound(std::move(r));
 
-            incrementPlayerIndex();
+            currentPlayer = players.next(currentPlayer);
         }
     }
 }

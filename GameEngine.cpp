@@ -1,11 +1,13 @@
 #include "GameEngine.h"
 
+#include <utility>
+
 GameEngine::GameEngine() : status(GameStatus::NotStarted)
 {}
 
 void GameEngine::addPlayer(Player &&player)
 {
-    players.push_back(std::move(player));
+    players.addPlayer(std::move(player));
 }
 
 void GameEngine::initializeScoreboard(const GameStructure &structure, 
@@ -78,13 +80,17 @@ Card *GameEngine::getCurrentTrumpCard()
 
 void GameEngine::createPlayers(const vector<string> &playerNames)
 {
-    for(const auto& playerName : playerNames)
-        players.emplace_back(playerName);
+    players.createPlayers(playerNames);
 }
 
-Player *GameEngine::getFirstPlayerOfTheRound()
+PlayerList::iterator GameEngine::getFirstPlayerOfTheRound()
 {
     return scoreboard.getCurrentRound().getFirstPlayer();
+}
+
+PlayerList::iterator GameEngine::getNextPlayer(PlayerList::iterator player)
+{
+    return players.next(player);
 }
 
 unsigned int GameEngine::getPlayerCount()
@@ -92,13 +98,13 @@ unsigned int GameEngine::getPlayerCount()
     return players.size();
 }
 
-void GameEngine::placeBet(Player *player, unsigned int bet)
+void GameEngine::placeBet(PlayerList::iterator player, unsigned int bet)
 {
     scoreboard.getCurrentRound().setBet(player, bet);
 }
 
 void GameEngine::clearAllPlayerHands()
 {
-    for(auto player : players)
+    for(auto& player : players)
         player.clearHand();
 }

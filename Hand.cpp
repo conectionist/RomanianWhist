@@ -20,12 +20,12 @@ Suit Hand::getDownSuit()
     return downSuit;
 }
 
-void Hand::setWinner(Player *player)
+void Hand::setWinner(PlayerList::iterator player)
 {
     winner = player;
 }
 
-Player *Hand::getWinner()
+PlayerList::iterator Hand::getWinner()
 {
     return winner;
 }
