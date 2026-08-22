@@ -1,0 +1,159 @@
+#include "PlayerList.h"
+
+#include <utility>
+
+PlayerList::PlayerList(const vector<string>& playerNames)
+{
+    createPlayers(playerNames);
+}
+
+void PlayerList::addPlayer(Player&& player)
+{
+    players.push_back(std::move(player));
+}
+
+void PlayerList::addPlayer(const string& playerName)
+{
+    players.emplace_back(playerName);
+}
+
+void PlayerList::createPlayers(const vector<string>& playerNames)
+{
+    players.clear();
+
+    for(const auto& playerName : playerNames)
+        addPlayer(playerName);
+}
+
+void PlayerList::clear()
+{
+    players.clear();
+}
+
+bool PlayerList::empty() const
+{
+    return players.empty();
+}
+
+PlayerList::size_type PlayerList::size() const
+{
+    return players.size();
+}
+
+Player& PlayerList::at(size_type index)
+{
+    return players.at(index);
+}
+
+const Player& PlayerList::at(size_type index) const
+{
+    return players.at(index);
+}
+
+Player& PlayerList::operator[](size_type index)
+{
+    return players[index];
+}
+
+const Player& PlayerList::operator[](size_type index) const
+{
+    return players[index];
+}
+
+PlayerList::iterator PlayerList::begin()
+{
+    return players.begin();
+}
+
+PlayerList::const_iterator PlayerList::begin() const
+{
+    return players.begin();
+}
+
+PlayerList::const_iterator PlayerList::cbegin() const
+{
+    return players.cbegin();
+}
+
+PlayerList::iterator PlayerList::end()
+{
+    return players.end();
+}
+
+PlayerList::const_iterator PlayerList::end() const
+{
+    return players.end();
+}
+
+PlayerList::const_iterator PlayerList::cend() const
+{
+    return players.cend();
+}
+
+PlayerList::iterator PlayerList::first()
+{
+    return players.begin();
+}
+
+PlayerList::const_iterator PlayerList::first() const
+{
+    return players.begin();
+}
+
+PlayerList::iterator PlayerList::next(iterator current)
+{
+    if(players.empty())
+        return players.end();
+
+    if(current == players.end())
+        return players.begin();
+
+    ++current;
+
+    if(current == players.end())
+        return players.begin();
+
+    return current;
+}
+
+PlayerList::const_iterator PlayerList::next(const_iterator current) const
+{
+    if(players.empty())
+        return players.end();
+
+    if(current == players.end())
+        return players.begin();
+
+    ++current;
+
+    if(current == players.end())
+        return players.begin();
+
+    return current;
+}
+
+PlayerList::iterator PlayerList::advanceCircular(iterator current, size_type steps)
+{
+    if(players.empty())
+        return players.end();
+
+    auto result = current;
+
+    for(size_type i = 0 ; i < steps ; i++)
+        result = next(result);
+
+    return result;
+}
+
+PlayerList::const_iterator PlayerList::advanceCircular(const_iterator current, size_type steps) const
+{
+    if(players.empty())
+        return players.end();
+
+    auto result = current;
+
+    for(size_type i = 0 ; i < steps ; i++)
+        result = next(result);
+
+    return result;
+}
