@@ -1,12 +1,15 @@
 #include "Deck.h"
 
-Deck::Deck()
+void Deck::addCard(Card&& card)
 {
-    for(int s = 0 ; s < 4 ; s++)
-        for(int r = 0 ; r < 13 ; r++)
-            deck[s * 13 + r] = Card(static_cast<Rank>(r), static_cast<Suit>(s));
+    deck.push_back(std::move(card));
 }
 
 void Deck::shuffle()
 {
+}
+
+Card *Deck::getCardAt(unsigned int i)
+{
+    return &deck[i];
 }

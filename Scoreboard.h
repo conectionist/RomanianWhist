@@ -2,10 +2,17 @@
 #define SCOREBOARD_H
 
 #include "Round.h"
+#include "Player.h"
 
 #include <vector>
 
 using std::vector;
+
+enum class GameStructure
+{
+    S_181,
+    S_818
+};
 
 class Scoreboard
 {
@@ -15,11 +22,18 @@ private:
 
 public:
     Scoreboard();
-    void addRound(const Round& round);
-    void addRound(Round&& round);
+    void initialize(const GameStructure& structure, 
+                    bool endWithForeheadAndHidden, 
+                    bool all1GamesAreForehead,
+                    const vector<Player>& players);
+    
     Round& getRound(int i);
     void incrementCurrentRound();
     Round& getCurrentRound();
+    vector<Round> getAllRounds();
+
+private:
+    void addRound(Round&& round);
 };
 
 #endif

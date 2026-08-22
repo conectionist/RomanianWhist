@@ -1,10 +1,12 @@
 #include <iostream>
 
-#include "Deck.h"
+#include "TerminalRomanianWhist.h"
 
 int main()
 {
-    std::cout << "Hello, Romanian Whist" << std::endl;
+    TerminalRomanianWhist whist;
+
+    whist.startGame();
 
     return 0;
 }

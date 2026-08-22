@@ -1,6 +1,10 @@
 #ifndef CARD_H
 #define CARD_H
 
+#include <string>
+
+using std::string;
+
 enum class Rank
 {
     Two,
@@ -31,11 +35,9 @@ struct Card
     Rank rank;
     Suit suit;
 
-    Card() : rank(Rank::Two), suit(Suit::Clubs)
-    {}
-
-    Card(Rank _rank, Suit _suit) : rank(_rank), suit(_suit)
-    {}
+    Card();
+    Card(Rank _rank, Suit _suit);
+    string toString();
 };
 
 #endif

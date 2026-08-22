@@ -3,18 +3,19 @@
 
 #include "Card.h"
 
-#include <array>
+#include <vector>
 
-using std::array;
+using std::vector;
 
 class Deck
 {
 private:
-    array<Card, 52> deck;
+    vector<Card> deck;
 
 public:
-    Deck();
+    void addCard(Card&& card);
     void shuffle();
+    Card* getCardAt(unsigned int i);
 };
 
 #endif
