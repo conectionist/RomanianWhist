@@ -30,8 +30,7 @@ public:
     void addPlayer(Player&& player);
     void initializeScoreboard(const GameStructure& structure, 
                               bool endWithForeheadAndHidden, 
-                              bool all1GamesAreForehead, 
-                              const vector<Player>& players);
+                              bool all1GamesAreForehead);
     void initializeDeck(unsigned int playerCount);
     GameStatus getStatus();
     void setStatus(GameStatus _status);
@@ -40,7 +39,7 @@ public:
     void shuffleDeck();
     void dealCards();
     Card* getCurrentTrumpCard();
-    void setPlayers(const vector<Player>& players);
+    void createPlayers(const vector<string>& playerNames);
     Player* getFirstPlayerOfTheRound();
     unsigned int getPlayerCount();
     void placeBet(Player* player, unsigned int bet);

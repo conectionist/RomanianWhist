@@ -43,19 +43,11 @@ void TerminalRomanianWhist::initialize()
     cout << "2) Sure!" << endl;
     cin >> all1GamesAreForehead;
 
-    vector<Player> players;
-
-    for(const auto& playerName : playerNames)
-    {
-        players.emplace_back(playerName);
-    }
-
-    game.setPlayers(players);
+    game.createPlayers(playerNames);
 
     game.initializeScoreboard(gameStructure == 0 ? GameStructure::S_181 : GameStructure::S_818,
                               endWithForeheadAndHidden == 1,
-                              all1GamesAreForehead == 1,
-                              players);
+                              all1GamesAreForehead == 1);
 
     game.initializeDeck(playerCount);
 }
@@ -119,19 +111,12 @@ void TerminalRomanianWhist::initializeTest()
 {
     int playerCount = 4;
     vector<string> playerNames = {"Danutz", "Mihai", "Aditz", "Fane"};
-    vector<Player> players;
-
-    for(const auto& playerName : playerNames)
-    {
-        players.emplace_back(playerName);
-    }
-
-    game.setPlayers(players);
+    
+    game.createPlayers(playerNames);
 
     game.initializeScoreboard(GameStructure::S_181,
                               true,
-                              false,
-                              players);
+                              false);
 
     game.initializeDeck(playerCount);
 }

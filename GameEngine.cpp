@@ -10,8 +10,7 @@ void GameEngine::addPlayer(Player &&player)
 
 void GameEngine::initializeScoreboard(const GameStructure &structure, 
                                       bool endWithForeheadAndHidden, 
-                                      bool all1GamesAreForehead, 
-                                      const vector<Player> &players)
+                                      bool all1GamesAreForehead)
 {
     scoreboard.initialize(structure, endWithForeheadAndHidden, all1GamesAreForehead, players);
 }
@@ -77,15 +76,11 @@ Card *GameEngine::getCurrentTrumpCard()
     return scoreboard.getCurrentRound().getTrumpCard();
 }
 
-void GameEngine::setPlayers(const vector<Player> &_players)
+void GameEngine::createPlayers(const vector<string> &playerNames)
 {
-    players = _players;
+    for(const auto& playerName : playerNames)
+        players.emplace_back(playerName);
 }
-
-// vector<Player*> GameEngine::getOrderedPlayers()
-// {
-//     //scoreboard.getCurrentRound().getFirstPlayer()
-// }
 
 Player *GameEngine::getFirstPlayerOfTheRound()
 {
