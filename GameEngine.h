@@ -45,9 +45,15 @@ public:
     PlayerList::iterator getNextPlayer(PlayerList::iterator player);
     unsigned int getPlayerCount();
     void placeBet(PlayerList::iterator player, unsigned int bet);
+    unsigned int getCurrentRoundHandCount();
+    void addHandToCurrentRound(const Hand& hand);
+    PlayerList::iterator determineTrickWinner(const Hand& trick, PlayerList::iterator firstPlayer);
+    void setFirstPlayerOfTheRound(PlayerList::iterator player);
+    void completeCurrentRound();
 
 private:
     void clearAllPlayerHands();
+    bool cardBeats(const Card& candidate, const Card& currentBest, Suit ledSuit);
 };
 
 #endif

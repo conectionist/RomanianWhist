@@ -5,7 +5,7 @@ void Hand::addPlayedCard(Card *card)
     playedCards.push_back(card);
 }
 
-vector<Card *> Hand::getPlayedCards()
+vector<Card *> Hand::getPlayedCards() const
 {
     return playedCards;
 }
@@ -15,7 +15,7 @@ void Hand::setDownSuit(Suit suit)
     downSuit = suit;
 }
 
-Suit Hand::getDownSuit()
+const Suit& Hand::getDownSuit() const
 {
     return downSuit;
 }

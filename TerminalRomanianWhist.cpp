@@ -2,6 +2,7 @@
 
 #include <iostream>
 
+#include "Hand.h"
 #include "Player.h"
 
 using std::cin, std::cout, std::endl;
@@ -91,17 +92,43 @@ void TerminalRomanianWhist::loop()
             currentPlayer = game.getNextPlayer(currentPlayer);
         }
 
-        /*
-            get card from 1st player
-            set the down suit of the current round
-            get cards for the rest of the players
-            add each had to the round's hands vector
-            decide who won based on the round's hand vector and set him/her as the new first player            
-        */
+        playCurrentRoundTricks();
+        game.completeCurrentRound();
+    }
+}
+
+void TerminalRomanianWhist::playCurrentRoundTricks()
+{
+    const unsigned int trickCount = game.getCurrentRoundHandCount();
+
+    for(unsigned int trickIndex = 0 ; trickIndex < trickCount ; trickIndex++)
+    {
+        Hand trick;
+        auto currentPlayer = game.getFirstPlayerOfTheRound();
+
+        cout << endl << "Trick " << (trickIndex + 1) << " of " << trickCount << endl;
+
         for(unsigned int i = 0 ; i < game.getPlayerCount() ; i++)
         {
-            
+            Card* trump = game.getCurrentTrumpCard();
+            const Suit* downSuit = trick.getPlayedCards().empty() ? nullptr : &trick.getDownSuit();
+            Card* playedCard = currentPlayer->playCard(trump, downSuit);
+
+            if(trick.getPlayedCards().empty())
+                trick.setDownSuit(playedCard->suit);
+
+            trick.addPlayedCard(playedCard);
+            cout << currentPlayer->getName() << " plays " << playedCard->toString() << endl;
+
+            currentPlayer = game.getNextPlayer(currentPlayer);
         }
+
+        auto winner = game.determineTrickWinner(trick, game.getFirstPlayerOfTheRound());
+        trick.setWinner(winner);
+        game.addHandToCurrentRound(trick);
+        game.setFirstPlayerOfTheRound(winner);
+
+        cout << winner->getName() << " wins the trick." << endl;
     }
 }
 

@@ -2,6 +2,7 @@
 #define PLAYER_H
 
 #include "Card.h"
+#include "CardValidator.h"
 
 #include <string>
 #include <vector>
@@ -13,13 +14,17 @@ class Player
 {
 private:
     string name;
-    vector<const Card*> hand;
+    vector<Card*> hand;
+    CardValidator cardValidator;
 
 public:
     Player(const string& _name);
     string getName();
-    void addCardToHand(const Card* card);
+    void addCardToHand(Card* card);
     void clearHand();
+    const vector<Card*>& getHand() const;
+    Card* playCard(Card* trump, const Suit* downSuit);
+    bool hasSuit(Suit suit) const;
     unsigned int getBet() const;
 };
 

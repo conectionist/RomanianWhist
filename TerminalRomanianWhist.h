@@ -14,6 +14,7 @@ public:
 private:
     void initialize();
     void loop();
+    void playCurrentRoundTricks();
 
     void initializeTest();
 

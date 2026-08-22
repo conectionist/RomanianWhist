@@ -92,3 +92,13 @@ vector<Round> Scoreboard::getAllRounds()
 {
     return rounds;
 }
+
+unsigned int Scoreboard::getRoundCount() const
+{
+    return rounds.size();
+}
+
+unsigned int Scoreboard::getCurrentRoundIndex() const
+{
+    return currentRound;
+}

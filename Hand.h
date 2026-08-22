@@ -17,10 +17,10 @@ private:
 
 public:
     void addPlayedCard(Card* card);
-    vector<Card*> getPlayedCards();
+    vector<Card*> getPlayedCards() const;
 
     void setDownSuit(Suit suit);
-    Suit getDownSuit();
+    const Suit& getDownSuit() const;
 
     void setWinner(PlayerList::iterator player);
     PlayerList::iterator getWinner();

@@ -31,6 +31,8 @@ public:
     void incrementCurrentRound();
     Round& getCurrentRound();
     vector<Round> getAllRounds();
+    unsigned int getRoundCount() const;
+    unsigned int getCurrentRoundIndex() const;
 
 private:
     void addRound(Round&& round);

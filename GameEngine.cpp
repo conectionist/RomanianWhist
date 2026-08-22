@@ -108,3 +108,66 @@ void GameEngine::clearAllPlayerHands()
     for(auto& player : players)
         player.clearHand();
 }
+
+unsigned int GameEngine::getCurrentRoundHandCount()
+{
+    return scoreboard.getCurrentRound().getHandCount();
+}
+
+void GameEngine::addHandToCurrentRound(const Hand& hand)
+{
+    scoreboard.getCurrentRound().addHand(hand);
+}
+
+PlayerList::iterator GameEngine::determineTrickWinner(const Hand& trick, PlayerList::iterator firstPlayer)
+{
+    const auto playedCards = trick.getPlayedCards();
+    unsigned int bestIndex = 0;
+
+    for(unsigned int i = 1 ; i < playedCards.size() ; i++)
+    {
+        if(cardBeats(*playedCards[i], *playedCards[bestIndex], trick.getDownSuit()))
+            bestIndex = i;
+    }
+
+    return players.advanceCircular(firstPlayer, bestIndex);
+}
+
+void GameEngine::setFirstPlayerOfTheRound(PlayerList::iterator player)
+{
+    scoreboard.getCurrentRound().setFirstPlayer(player);
+}
+
+void GameEngine::completeCurrentRound()
+{
+    if(scoreboard.getCurrentRoundIndex() + 1 >= scoreboard.getRoundCount())
+        status = GameStatus::Finished;
+    else
+        scoreboard.incrementCurrentRound();
+}
+
+bool GameEngine::cardBeats(const Card& candidate, const Card& currentBest, Suit ledSuit)
+{
+    const Card* trump = getCurrentTrumpCard();
+    const bool candidateIsTrump = trump && candidate.suit == trump->suit;
+    const bool bestIsTrump = trump && currentBest.suit == trump->suit;
+
+    if(candidateIsTrump || bestIsTrump)
+    {
+        if(candidateIsTrump != bestIsTrump)
+            return candidateIsTrump;
+
+        return static_cast<int>(candidate.rank) > static_cast<int>(currentBest.rank);
+    }
+
+    const bool candidateIsLed = candidate.suit == ledSuit;
+    const bool bestIsLed = currentBest.suit == ledSuit;
+
+    if(candidateIsLed != bestIsLed)
+        return candidateIsLed;
+
+    if(candidateIsLed)
+        return static_cast<int>(candidate.rank) > static_cast<int>(currentBest.rank);
+
+    return false;
+}

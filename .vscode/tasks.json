@@ -17,6 +17,8 @@
                 "${workspaceFolder}/Scoreboard.cpp",
                 "${workspaceFolder}/GameEngine.cpp",
                 "${workspaceFolder}/TerminalRomanianWhist.cpp",
+                "${workspaceFolder}/PlayerList.cpp",
+                "${workspaceFolder}/CardValidator.cpp",
                 "-o",
                 "${workspaceFolder}/main"
             ],
