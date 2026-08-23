@@ -5,7 +5,7 @@
 #include <iomanip>
 #include <algorithm>
 
-#include "Hand.h"
+#include "Trick.h"
 #include "Player.h"
 #include "ConsoleMoveProvider.h"
 #include "AiMoveProvider.h"
@@ -88,7 +88,7 @@ void TerminalRomanianWhist::loop()
 
         cout << "\n=========================\n";
 
-        cout << "Joc de " << game.getCurrentRoundHandCount() << endl;
+        cout << "Joc de " << game.getCurrentRoundTrickCount() << endl;
 
         auto* trump = game.getCurrentTrumpCard();
         if(trump)
@@ -129,7 +129,7 @@ void TerminalRomanianWhist::loop()
 
 void TerminalRomanianWhist::playCurrentRoundTricks()
 {
-    const unsigned int trickCount = game.getCurrentRoundHandCount();
+    const unsigned int trickCount = game.getCurrentRoundTrickCount();
     
     // Track tricks won by each player
     std::unordered_map<std::string, unsigned int> tricksWon;
@@ -145,7 +145,7 @@ void TerminalRomanianWhist::playCurrentRoundTricks()
 
     for(unsigned int trickIndex = 0 ; trickIndex < trickCount ; trickIndex++)
     {
-        Hand trick;
+        Trick trick;
         currentPlayer = game.getFirstPlayerOfTheRound();
 
         cout << endl << "Trick " << (trickIndex + 1) << " of " << trickCount << endl;
@@ -167,7 +167,7 @@ void TerminalRomanianWhist::playCurrentRoundTricks()
 
         auto winner = game.determineTrickWinner(trick, game.getFirstPlayerOfTheRound());
         trick.setWinner(winner);
-        game.addHandToCurrentRound(trick);
+        game.addTrickToCurrentRound(trick);
         game.setFirstPlayerOfTheRound(winner);
 
         // Track tricks won

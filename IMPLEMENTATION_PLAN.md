@@ -11,8 +11,8 @@ The project already has the main domain objects:
 - `Card`: rank/suit representation and display.
 - `Deck`: stores cards and exposes indexed access.
 - `Player`: stores name, hand, and next-player pointer.
-- `Hand`: represents one trick.
-- `Round`: stores hand count, trump card, first player, round type, bets, and results.
+- `Trick`: represents one trick.
+- `Round`: stores trick count, trump card, first player, round type, bets, and results.
 - `Scoreboard`: creates the round schedule.
 - `GameEngine`: owns players, deck, scoreboard, and game status.
 - `TerminalRomanianWhist`: handles setup and the terminal game loop.
@@ -158,7 +158,7 @@ Expected result:
 - Track lead suit for each trick.
 - Enforce follow-suit/trump rules.
 - Remove played cards from player hands.
-- Store played cards in `Hand`.
+- Store played cards in `Trick`.
 - Rotate trick order based on previous trick winner.
 
 Expected result:

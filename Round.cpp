@@ -1,16 +1,16 @@
 #include "Round.h"
 
-Round::Round(unsigned int _handCount, 
+Round::Round(unsigned int _trickCount, 
              PlayerList::iterator player,
              RoundType _type) : trump(nullptr),
-                                handCount(_handCount),
+                                trickCount(_trickCount),
                                 type(_type),
                                 firstPlayer(player)
 {}
 
-void Round::addHand(const Hand &hand)
+void Round::addTrick(const Trick &trick)
 {
-    hands.push_back(hand);
+    tricks.push_back(trick);
 }
 
 void Round::setBet(PlayerList::iterator player, unsigned int guess)
@@ -18,9 +18,9 @@ void Round::setBet(PlayerList::iterator player, unsigned int guess)
     bets[player->getName()].guess = guess;
 }
 
-void Round::setResult(PlayerList::iterator player, unsigned int wonHands)
+void Round::setResult(PlayerList::iterator player, unsigned int wonTricks)
 {
-    bets[player->getName()].actual = wonHands;
+    bets[player->getName()].actual = wonTricks;
 }
 
 void Round::setTrumpCard(Card *card)
@@ -33,9 +33,9 @@ Card *Round::getTrumpCard()
     return trump;
 }
 
-unsigned int Round::getHandCount() const
+unsigned int Round::getTrickCount() const
 {
-    return handCount;
+    return trickCount;
 }
 
 void Round::setFirstPlayer(PlayerList::iterator player)

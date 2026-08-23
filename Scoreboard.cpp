@@ -173,7 +173,7 @@ int Scoreboard::calculateRoundScore(unsigned int bid, unsigned int actual) const
 bool Scoreboard::shouldCountForStreaks(const Round& round) const
 {
     // 1-card rounds don't count for streaks
-    return round.getHandCount() != 1;
+    return round.getTrickCount() != 1;
 }
 
 vector<pair<string, int>> Scoreboard::getPlayerScores(const PlayerList& players) const

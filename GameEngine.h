@@ -48,10 +48,10 @@ public:
     PlayerList::iterator getNextPlayer(PlayerList::iterator player);
     unsigned int getPlayerCount();
     void placeBet(PlayerList::iterator player, unsigned int bet);
-    void setResult(PlayerList::iterator player, unsigned int wonHands);
-    unsigned int getCurrentRoundHandCount();
-    void addHandToCurrentRound(const Hand& hand);
-    PlayerList::iterator determineTrickWinner(const Hand& trick, PlayerList::iterator firstPlayer);
+    void setResult(PlayerList::iterator player, unsigned int wonTricks);
+    unsigned int getCurrentRoundTrickCount();
+    void addTrickToCurrentRound(const Trick& trick);
+    PlayerList::iterator determineTrickWinner(const Trick& trick, PlayerList::iterator firstPlayer);
     void setFirstPlayerOfTheRound(PlayerList::iterator player);
     void completeCurrentRound();
     void calculateScores();

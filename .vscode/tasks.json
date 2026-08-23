@@ -11,7 +11,7 @@
                 "${workspaceFolder}/main.cpp",
                 "${workspaceFolder}/Card.cpp",
                 "${workspaceFolder}/Deck.cpp",
-                "${workspaceFolder}/Hand.cpp",
+                "${workspaceFolder}/Trick.cpp",
                 "${workspaceFolder}/Round.cpp",
                 "${workspaceFolder}/Player.cpp",
                 "${workspaceFolder}/Scoreboard.cpp",

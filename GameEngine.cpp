@@ -60,7 +60,7 @@ void GameEngine::dealCards()
 {
     clearAllPlayerHands();
 
-    unsigned int gameCount = scoreboard.getCurrentRound().getHandCount();
+    unsigned int gameCount = scoreboard.getCurrentRound().getTrickCount();
     unsigned int index = 0;
 
     for(unsigned int i = 0 ; i < gameCount ; i++)
@@ -108,9 +108,9 @@ void GameEngine::placeBet(PlayerList::iterator player, unsigned int bet)
     scoreboard.getCurrentRound().setBet(player, bet);
 }
 
-void GameEngine::setResult(PlayerList::iterator player, unsigned int wonHands)
+void GameEngine::setResult(PlayerList::iterator player, unsigned int wonTricks)
 {
-    scoreboard.getCurrentRound().setResult(player, wonHands);
+    scoreboard.getCurrentRound().setResult(player, wonTricks);
 }
 
 void GameEngine::clearAllPlayerHands()
@@ -119,17 +119,17 @@ void GameEngine::clearAllPlayerHands()
         player.clearHand();
 }
 
-unsigned int GameEngine::getCurrentRoundHandCount()
+unsigned int GameEngine::getCurrentRoundTrickCount()
 {
-    return scoreboard.getCurrentRound().getHandCount();
+    return scoreboard.getCurrentRound().getTrickCount();
 }
 
-void GameEngine::addHandToCurrentRound(const Hand& hand)
+void GameEngine::addTrickToCurrentRound(const Trick& trick)
 {
-    scoreboard.getCurrentRound().addHand(hand);
+    scoreboard.getCurrentRound().addTrick(trick);
 }
 
-PlayerList::iterator GameEngine::determineTrickWinner(const Hand& trick, PlayerList::iterator firstPlayer)
+PlayerList::iterator GameEngine::determineTrickWinner(const Trick& trick, PlayerList::iterator firstPlayer)
 {
     const auto playedCards = trick.getPlayedCards();
     unsigned int bestIndex = 0;

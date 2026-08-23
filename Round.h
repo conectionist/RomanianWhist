@@ -1,7 +1,7 @@
 #ifndef ROUND_H
 #define ROUND_H
 
-#include "Hand.h"
+#include "Trick.h"
 #include "PlayerList.h"
 #include "Util.h"
 
@@ -20,21 +20,21 @@ struct Bet
 class Round
 {
 private:
-    vector<Hand> hands;
+    vector<Trick> tricks;
     unordered_map<string, Bet> bets;
     Card* trump;
-    unsigned int handCount;
+    unsigned int trickCount;
     RoundType type;
     PlayerList::iterator firstPlayer;
 
 public:
-    Round(unsigned int _handCount, PlayerList::iterator player, RoundType _type = RoundType::Normal);
-    void addHand(const Hand& hand);
+    Round(unsigned int _trickCount, PlayerList::iterator player, RoundType _type = RoundType::Normal);
+    void addTrick(const Trick& trick);
     void setBet(PlayerList::iterator player, unsigned int guess);
-    void setResult(PlayerList::iterator player, unsigned int wonHands);
+    void setResult(PlayerList::iterator player, unsigned int wonTricks);
     void setTrumpCard(Card* card);
     Card* getTrumpCard();
-    unsigned int getHandCount() const;
+    unsigned int getTrickCount() const;
     void setFirstPlayer(PlayerList::iterator player);
     PlayerList::iterator getFirstPlayer() const;
     void setRoundType(RoundType _type);

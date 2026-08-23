@@ -1,5 +1,5 @@
-#ifndef HAND_H
-#define HAND_H
+#ifndef TRICK_H
+#define TRICK_H
 
 #include "Card.h"
 #include "PlayerList.h"
@@ -8,7 +8,7 @@
 
 using std::vector;
 
-class Hand
+class Trick
 {
 private:
     vector<Card*> playedCards;
