@@ -20,6 +20,9 @@
                 "${workspaceFolder}/PlayerList.cpp",
                 "${workspaceFolder}/CardValidator.cpp",
                 "${workspaceFolder}/ConsoleMoveProvider.cpp",
+                "${workspaceFolder}/AiMoveProvider.cpp",
+                "${workspaceFolder}/FirstCardStrategy.cpp",
+                "${workspaceFolder}/RandomCardStrategy.cpp",
                 "-o",
                 "${workspaceFolder}/main"
             ],

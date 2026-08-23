@@ -8,6 +8,9 @@
 #include "Hand.h"
 #include "Player.h"
 #include "ConsoleMoveProvider.h"
+#include "AiMoveProvider.h"
+#include "FirstCardStrategy.h"
+#include "RandomCardStrategy.h"
 
 using std::cin, std::cout, std::endl, std::left, std::setw;
 
@@ -62,10 +65,10 @@ void TerminalRomanianWhist::initializeTest()
 {
     int playerCount = 4;
     
-    game.addPlayer("Danutz", std::make_unique<ConsoleMoveProvider>());
-    game.addPlayer("Mihai", std::make_unique<ConsoleMoveProvider>());
-    game.addPlayer("Aditz", std::make_unique<ConsoleMoveProvider>());
-    game.addPlayer("Fane", std::make_unique<ConsoleMoveProvider>());
+    game.addPlayer("Danutz", std::make_unique<AiMoveProvider>(std::make_unique<FirstCardStrategy>()));
+    game.addPlayer("Mihai", std::make_unique<AiMoveProvider>(std::make_unique<FirstCardStrategy>()));
+    game.addPlayer("Aditz", std::make_unique<AiMoveProvider>(std::make_unique<RandomCardStrategy>()));
+    game.addPlayer("Fane", std::make_unique<AiMoveProvider>(std::make_unique<RandomCardStrategy>()));
     
     game.initializeScoreboard(GameStructure::S_181,
                               true,
@@ -80,21 +83,6 @@ void TerminalRomanianWhist::loop()
 
     while(game.isInProgress())
     {
-        /*
-            shuffle deck
-            deal cards
-            show trump
-            take bets from each player, starting with the current first
-            wait for first player to put card
-            wait for second player to put card
-            ...
-            wait for last player to put card
-            decide who won the hand
-            continue until players have no more cards
-            display scoreboard
-
-        */
-
         game.shuffleDeck();
         game.dealCards();
 
