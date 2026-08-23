@@ -10,9 +10,9 @@ unsigned int AiMoveProvider::makeBet(const vector<Card *> &hand, Card *trump, bo
     return strategy->getBestBet(hand, trump, isFirstPlayer);
 }
 
-Card *AiMoveProvider::playCard(vector<Card *> &hand, Card *trump, const Suit *downSuit)
+Card *AiMoveProvider::playCard(vector<Card *> &hand, Card *trump, const Suit *leadSuit)
 {
-    auto* card = strategy->getBestChoice(hand, trump, downSuit);
+    auto* card = strategy->getBestChoice(hand, trump, leadSuit);
     hand.erase(std::remove(hand.begin(), hand.end(), card), hand.end());
     return card;
 }

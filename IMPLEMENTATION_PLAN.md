@@ -64,9 +64,9 @@ Before implementing scoring and round validation, decide these house rules:
 
 6. Play restrictions:
    - Confirmed: legal play follows a strict priority order.
-   - First priority: if the player has the led suit, they must play the led suit.
-   - Second priority: if the player has no led-suit card but has trump, they must play trump.
-   - Third priority: if the player has neither the led suit nor trump, they may play anything.
+   - First priority: if the player has the lead suit, they must play the lead suit.
+   - Second priority: if the player has no lead-suit card but has trump, they must play trump.
+   - Third priority: if the player has neither the lead suit nor trump, they may play anything.
    - Overtrumping is not required. When a player must play trump, they do not have to beat an already-played trump card.
    Observation: if a player has both the lead suit and a trump, the player must play the lead. they cannot choose between either playing the lead suit or the trump.
 
@@ -155,7 +155,7 @@ Expected result:
 
 - Let each player choose a card from their hand.
 - Validate card choice.
-- Track led suit for each trick.
+- Track lead suit for each trick.
 - Enforce follow-suit/trump rules.
 - Remove played cards from player hands.
 - Store played cards in `Hand`.
@@ -169,7 +169,7 @@ Expected result:
 
 - Implement comparison rules:
   - Highest trump wins if any trump was played.
-  - Otherwise highest card of the led suit wins.
+  - Otherwise highest card of the lead suit wins.
 - Track each player's won-trick count.
 - Set trick winner.
 - Set next trick's first player to the trick winner.

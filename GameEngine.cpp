@@ -136,7 +136,7 @@ PlayerList::iterator GameEngine::determineTrickWinner(const Hand& trick, PlayerL
 
     for(unsigned int i = 1 ; i < playedCards.size() ; i++)
     {
-        if(cardBeats(*playedCards[i], *playedCards[bestIndex], trick.getDownSuit()))
+        if(cardBeats(*playedCards[i], *playedCards[bestIndex], trick.getLeadSuit()))
             bestIndex = i;
     }
 
@@ -185,7 +185,7 @@ vector<pair<string, pair<int, int>>> GameEngine::getPlayerRoundScores() const
     return roundScores;
 }
 
-bool GameEngine::cardBeats(const Card& candidate, const Card& currentBest, Suit ledSuit)
+bool GameEngine::cardBeats(const Card& candidate, const Card& currentBest, Suit leadSuit)
 {
     const Card* trump = getCurrentTrumpCard();
     const bool candidateIsTrump = trump && candidate.suit == trump->suit;
@@ -199,13 +199,13 @@ bool GameEngine::cardBeats(const Card& candidate, const Card& currentBest, Suit 
         return static_cast<int>(candidate.rank) > static_cast<int>(currentBest.rank);
     }
 
-    const bool candidateIsLed = candidate.suit == ledSuit;
-    const bool bestIsLed = currentBest.suit == ledSuit;
+    const bool candidateIsLead = candidate.suit == leadSuit;
+    const bool bestIsLead = currentBest.suit == leadSuit;
 
-    if(candidateIsLed != bestIsLed)
-        return candidateIsLed;
+    if(candidateIsLead != bestIsLead)
+        return candidateIsLead;
 
-    if(candidateIsLed)
+    if(candidateIsLead)
         return static_cast<int>(candidate.rank) > static_cast<int>(currentBest.rank);
 
     return false;

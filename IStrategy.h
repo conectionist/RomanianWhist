@@ -16,7 +16,7 @@ protected:
 public:
     virtual ~IStrategy() = default;
     virtual unsigned int getBestBet(const vector<Card*>& hand, Card* trump, bool isFirstPlayer) = 0;
-    virtual Card* getBestChoice(vector<Card*>& hand, Card* trump, const Suit* downSuit) = 0;
+    virtual Card* getBestChoice(vector<Card*>& hand, Card* trump, const Suit* leadSuit) = 0;
 };
 
 #endif

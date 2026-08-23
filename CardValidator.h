@@ -10,7 +10,7 @@ using std::vector;
 class CardValidator
 {
 public:
-    vector<Card*> getLegalCards(const vector<Card*>& hand, Card* trump, const Suit* downSuit) const;
+    vector<Card*> getLegalCards(const vector<Card*>& hand, Card* trump, const Suit* leadSuit) const;
 
 private:
     bool hasSuit(const vector<Card*>& hand, Suit suit) const;

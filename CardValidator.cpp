@@ -1,23 +1,23 @@
 #include "CardValidator.h"
 
-vector<Card*> CardValidator::getLegalCards(const vector<Card*>& hand, Card* trump, const Suit* downSuit) const
+vector<Card*> CardValidator::getLegalCards(const vector<Card*>& hand, Card* trump, const Suit* leadSuit) const
 {
     vector<Card*> legalCards;
 
     if(hand.empty())
         return legalCards;
 
-    if(downSuit == nullptr)
+    if(leadSuit == nullptr)
         return hand;
 
-    const bool mustFollowSuit = hasSuit(hand, *downSuit);
+    const bool mustFollowSuit = hasSuit(hand, *leadSuit);
     const bool mustPlayTrump = !mustFollowSuit && trump && hasSuit(hand, trump->suit);
 
     for(Card* card : hand)
     {
         if(mustFollowSuit)
         {
-            if(card->suit == *downSuit)
+            if(card->suit == *leadSuit)
                 legalCards.push_back(card);
         }
         else if(mustPlayTrump)

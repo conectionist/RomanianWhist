@@ -10,14 +10,14 @@ vector<Card *> Hand::getPlayedCards() const
     return playedCards;
 }
 
-void Hand::setDownSuit(Suit suit)
+void Hand::setLeadSuit(Suit suit)
 {
-    downSuit = suit;
+    leadSuit = suit;
 }
 
-const Suit& Hand::getDownSuit() const
+const Suit& Hand::getLeadSuit() const
 {
-    return downSuit;
+    return leadSuit;
 }
 
 void Hand::setWinner(PlayerList::iterator player)

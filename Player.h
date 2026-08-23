@@ -31,7 +31,7 @@ public:
     void addCardToHand(Card* card);
     void clearHand();
     const vector<Card*>& getHand() const;
-    Card* playCard(Card* trump, const Suit* downSuit);
+    Card* playCard(Card* trump, const Suit* leadSuit);
     bool hasSuit(Suit suit) const;
     unsigned int getBet(Card* trump, bool isFirstPlayer) const;
     

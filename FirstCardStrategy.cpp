@@ -6,9 +6,9 @@ unsigned int FirstCardStrategy::getBestBet(const vector<Card *> &hand, Card *tru
     return 0;
 }
 
-Card *FirstCardStrategy::getBestChoice(vector<Card *> &hand, Card *trump, const Suit *downSuit)
+Card *FirstCardStrategy::getBestChoice(vector<Card *> &hand, Card *trump, const Suit *leadSuit)
 {
-    vector<Card*> legalCards = cardValidator.getLegalCards(hand, trump, downSuit);
+    vector<Card*> legalCards = cardValidator.getLegalCards(hand, trump, leadSuit);
 
     return legalCards[0];
 }

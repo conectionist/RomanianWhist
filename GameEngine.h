@@ -63,7 +63,7 @@ public:
 
 private:
     void clearAllPlayerHands();
-    bool cardBeats(const Card& candidate, const Card& currentBest, Suit ledSuit);
+    bool cardBeats(const Card& candidate, const Card& currentBest, Suit leadSuit);
 };
 
 #endif

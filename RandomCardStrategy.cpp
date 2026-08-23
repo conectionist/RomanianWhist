@@ -7,9 +7,9 @@ unsigned int RandomCardStrategy::getBestBet(const vector<Card *> &hand, Card *tr
     return 0;
 }
 
-Card *RandomCardStrategy::getBestChoice(vector<Card *> &hand, Card *trump, const Suit *downSuit)
+Card *RandomCardStrategy::getBestChoice(vector<Card *> &hand, Card *trump, const Suit *leadSuit)
 {
-    vector<Card*> legalCards = cardValidator.getLegalCards(hand, trump, downSuit);
+    vector<Card*> legalCards = cardValidator.getLegalCards(hand, trump, leadSuit);
 
     if (legalCards.empty())
         return nullptr;

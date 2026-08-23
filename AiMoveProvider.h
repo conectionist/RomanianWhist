@@ -15,7 +15,7 @@ private:
 public:
     AiMoveProvider(unique_ptr<IStrategy> _strategy);
     unsigned int makeBet(const vector<Card*>& hand, Card* trump, bool isFirstPlayer) override;
-    Card* playCard(vector<Card*>& hand, Card* trump, const Suit* downSuit) override;
+    Card* playCard(vector<Card*>& hand, Card* trump, const Suit* leadSuit) override;
 };
 
 #endif

@@ -14,10 +14,10 @@ unsigned int ConsoleMoveProvider::makeBet(const vector<Card*>& hand, Card* trump
     return bet;
 }
 
-Card* ConsoleMoveProvider::playCard(vector<Card*>& hand, Card* trump, const Suit* downSuit)
+Card* ConsoleMoveProvider::playCard(vector<Card*>& hand, Card* trump, const Suit* leadSuit)
 {
     CardValidator cardValidator;
-    vector<Card*> legalCards = cardValidator.getLegalCards(hand, trump, downSuit);
+    vector<Card*> legalCards = cardValidator.getLegalCards(hand, trump, leadSuit);
 
     std::cout << "Choose a card to play:" << std::endl;
     for(int i = 0 ; i < legalCards.size() ; i++)

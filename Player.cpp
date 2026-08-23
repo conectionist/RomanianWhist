@@ -32,16 +32,16 @@ const vector<Card*>& Player::getHand() const
     return hand;
 }
 
-Card* Player::playCard(Card* trump, const Suit* downSuit)
+Card* Player::playCard(Card* trump, const Suit* leadSuit)
 {
-    // vector<Card*> legalCards = cardValidator.getLegalCards(hand, trump, downSuit);
+    // vector<Card*> legalCards = cardValidator.getLegalCards(hand, trump, leadSuit);
 
     // // TODO: Temporary. Always play the first legal card; no strategy yet.
     // Card* card = legalCards[0];
     // hand.erase(std::find(hand.begin(), hand.end(), card));
     // return card;
 
-    return moveProvider->playCard(hand, trump, downSuit);
+    return moveProvider->playCard(hand, trump, leadSuit);
 }
 
 bool Player::hasSuit(Suit suit) const

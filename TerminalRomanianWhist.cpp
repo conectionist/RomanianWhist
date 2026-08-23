@@ -153,11 +153,11 @@ void TerminalRomanianWhist::playCurrentRoundTricks()
         for(unsigned int i = 0 ; i < game.getPlayerCount() ; i++)
         {
             Card* trump = game.getCurrentTrumpCard();
-            const Suit* downSuit = trick.getPlayedCards().empty() ? nullptr : &trick.getDownSuit();
-            Card* playedCard = currentPlayer->playCard(trump, downSuit);
+            const Suit* leadSuit = trick.getPlayedCards().empty() ? nullptr : &trick.getLeadSuit();
+            Card* playedCard = currentPlayer->playCard(trump, leadSuit);
 
             if(trick.getPlayedCards().empty())
-                trick.setDownSuit(playedCard->suit);
+                trick.setLeadSuit(playedCard->suit);
 
             trick.addPlayedCard(playedCard);
             cout << currentPlayer->getName() << " plays " << playedCard->toString() << endl;
