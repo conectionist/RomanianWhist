@@ -19,17 +19,22 @@ Card* ConsoleMoveProvider::playCard(vector<Card*>& hand, Card* trump, const Suit
     CardValidator cardValidator;
     vector<Card*> legalCards = cardValidator.getLegalCards(hand, trump, leadSuit);
 
-    std::cout << "Choose a card to play:" << std::endl;
-    for(int i = 0 ; i < legalCards.size() ; i++)
-    {
+    std::cout << "Your hand:" << std::endl;
+    for(Card* card : hand)
+        std::cout << "  " << card->toString() << std::endl;
+
+    std::cout << "Legal plays:" << std::endl;
+    for(int i = 0 ; i < static_cast<int>(legalCards.size()) ; i++)
         std::cout << i << ") " << legalCards[i]->toString() << std::endl;
-    }
 
     int choice;
-    std::cin >> choice;
-
-    if (choice < 0 || choice >= legalCards.size()) {
-        choice = 0;
+    while(true)
+    {
+        std::cin >> choice;
+        if(choice >= 0 && choice < static_cast<int>(legalCards.size()))
+            break;
+        std::cout << "Invalid choice. Enter a number between 0 and "
+                  << (legalCards.size() - 1) << ": ";
     }
 
     Card* card = legalCards[choice];

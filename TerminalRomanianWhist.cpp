@@ -65,6 +65,7 @@ void TerminalRomanianWhist::initializeTest()
 {
     int playerCount = 4;
     
+    //game.addPlayer("Danutz", std::make_unique<ConsoleMoveProvider>());
     game.addPlayer("Danutz", std::make_unique<AiMoveProvider>(std::make_unique<FirstCardStrategy>()));
     game.addPlayer("Mihai", std::make_unique<AiMoveProvider>(std::make_unique<FirstCardStrategy>()));
     game.addPlayer("Aditz", std::make_unique<AiMoveProvider>(std::make_unique<RandomCardStrategy>()));

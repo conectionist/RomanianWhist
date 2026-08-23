@@ -90,15 +90,6 @@ Expected result:
 
 - Each round records valid bets from all players in the correct order, with the final-bidder rule enforced.
 
-### Phase 6: Card Play (minor gaps)
-
-- Improve out-of-range card selection in `ConsoleMoveProvider`: prompt again instead of silently defaulting to index 0.
-- Display each player's hand before they choose a card.
-
-Expected result:
-
-- Human players can always see their options and are never silently forced into a wrong play.
-
 ### Phase 9: Special Rounds
 
 - During a **Forehead** round: show all other players' cards to everyone, but hide the active player's card from themselves before betting.
