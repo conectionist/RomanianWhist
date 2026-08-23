@@ -7,6 +7,7 @@
 
 #include "Hand.h"
 #include "Player.h"
+#include "ConsoleMoveProvider.h"
 
 using std::cin, std::cout, std::endl, std::left, std::setw;
 
@@ -47,11 +48,28 @@ void TerminalRomanianWhist::initialize()
     cout << "2) Sure!" << endl;
     cin >> all1GamesAreForehead;
 
-    game.createPlayers(playerNames);
+    for(const auto& name : playerNames)
+        game.addPlayer(name, std::make_unique<ConsoleMoveProvider>());
 
     game.initializeScoreboard(gameStructure == 0 ? GameStructure::S_181 : GameStructure::S_818,
                               endWithForeheadAndHidden == 1,
                               all1GamesAreForehead == 1);
+
+    game.initializeDeck(playerCount);
+}
+
+void TerminalRomanianWhist::initializeTest()
+{
+    int playerCount = 4;
+    
+    game.addPlayer("Danutz", std::make_unique<ConsoleMoveProvider>());
+    game.addPlayer("Mihai", std::make_unique<ConsoleMoveProvider>());
+    game.addPlayer("Aditz", std::make_unique<ConsoleMoveProvider>());
+    game.addPlayer("Fane", std::make_unique<ConsoleMoveProvider>());
+    
+    game.initializeScoreboard(GameStructure::S_181,
+                              true,
+                              false);
 
     game.initializeDeck(playerCount);
 }
@@ -94,7 +112,8 @@ void TerminalRomanianWhist::loop()
 
         for(unsigned int i = 0 ; i < game.getPlayerCount() ; i++)
         {
-            unsigned int bet = currentPlayer->getBet();
+            bool isFirstPlayer = currentPlayer->getName() == game.getFirstPlayerOfTheRound()->getName();
+            unsigned int bet = currentPlayer->getBet(game.getCurrentTrumpCard(), isFirstPlayer);
             game.placeBet(currentPlayer, bet);
             currentPlayer = game.getNextPlayer(currentPlayer);
         }
@@ -229,16 +248,3 @@ void TerminalRomanianWhist::displayFinalResults()
     cout << "=========================" << endl;
 }
 
-void TerminalRomanianWhist::initializeTest()
-{
-    int playerCount = 4;
-    vector<string> playerNames = {"Danutz", "Mihai", "Aditz", "Fane"};
-    
-    game.createPlayers(playerNames);
-
-    game.initializeScoreboard(GameStructure::S_181,
-                              true,
-                              false);
-
-    game.initializeDeck(playerCount);
-}

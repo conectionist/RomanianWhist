@@ -13,12 +13,13 @@ public:
 
 private:
     void initialize();
+    void initializeTest();
     void loop();
     void playCurrentRoundTricks();
     void displayScoreboard();
     void displayFinalResults();
 
-    void initializeTest();
+
 
 };
 

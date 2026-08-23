@@ -10,6 +10,11 @@ void GameEngine::addPlayer(Player &&player)
     players.addPlayer(std::move(player));
 }
 
+void GameEngine::addPlayer(const string &name, unique_ptr<IMoveProvider> moveProvider)
+{
+    players.addPlayer(name, std::move(moveProvider));
+}
+
 void GameEngine::initializeScoreboard(const GameStructure &structure, 
                                       bool endWithForeheadAndHidden, 
                                       bool all1GamesAreForehead)
@@ -78,10 +83,10 @@ Card *GameEngine::getCurrentTrumpCard()
     return scoreboard.getCurrentRound().getTrumpCard();
 }
 
-void GameEngine::createPlayers(const vector<string> &playerNames)
-{
-    players.createPlayers(playerNames);
-}
+// void GameEngine::createPlayers(const vector<string> &playerNames)
+// {
+//     players.createPlayers(playerNames);
+// }
 
 PlayerList::iterator GameEngine::getFirstPlayerOfTheRound()
 {

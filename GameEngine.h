@@ -31,6 +31,7 @@ private:
 public:
     GameEngine();
     void addPlayer(Player&& player);
+    void addPlayer(const string& name, unique_ptr<IMoveProvider> moveProvider);
     void initializeScoreboard(const GameStructure& structure, 
                               bool endWithForeheadAndHidden, 
                               bool all1GamesAreForehead);
@@ -42,7 +43,7 @@ public:
     void shuffleDeck();
     void dealCards();
     Card* getCurrentTrumpCard();
-    void createPlayers(const vector<string>& playerNames);
+    //void createPlayers(const vector<string>& playerNames);
     PlayerList::iterator getFirstPlayerOfTheRound();
     PlayerList::iterator getNextPlayer(PlayerList::iterator player);
     unsigned int getPlayerCount();

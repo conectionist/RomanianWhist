@@ -3,7 +3,13 @@
 #include <algorithm>
 #include <utility>
 
-Player::Player(const string &_name) : name(std::move(_name)), totalScore(0), currentRoundScore(0), consecutiveWins(0), consecutiveLosses(0)
+Player::Player(const string &_name, 
+               unique_ptr<IMoveProvider> _moveProvider) : name(std::move(_name)), 
+                                                          moveProvider(std::move(_moveProvider)),
+                                                          totalScore(0), 
+                                                          currentRoundScore(0), 
+                                                          consecutiveWins(0), 
+                                                          consecutiveLosses(0)
 {}
 
 string Player::getName() const
@@ -28,12 +34,14 @@ const vector<Card*>& Player::getHand() const
 
 Card* Player::playCard(Card* trump, const Suit* downSuit)
 {
-    vector<Card*> legalCards = cardValidator.getLegalCards(hand, trump, downSuit);
+    // vector<Card*> legalCards = cardValidator.getLegalCards(hand, trump, downSuit);
 
-    // TODO: Temporary. Always play the first legal card; no strategy yet.
-    Card* card = legalCards[0];
-    hand.erase(std::find(hand.begin(), hand.end(), card));
-    return card;
+    // // TODO: Temporary. Always play the first legal card; no strategy yet.
+    // Card* card = legalCards[0];
+    // hand.erase(std::find(hand.begin(), hand.end(), card));
+    // return card;
+
+    return moveProvider->playCard(hand, trump, downSuit);
 }
 
 bool Player::hasSuit(Suit suit) const
@@ -47,9 +55,9 @@ bool Player::hasSuit(Suit suit) const
     return false;
 }
 
-unsigned int Player::getBet() const
+unsigned int Player::getBet(Card* trump, bool isFirstPlayer) const
 {
-    return 0;
+    return moveProvider->makeBet(hand, trump, isFirstPlayer);
 }
 
 int Player::getTotalScore() const

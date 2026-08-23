@@ -4,28 +4,28 @@
 #include <stdexcept>
 #include <utility>
 
-PlayerList::PlayerList(const vector<string>& playerNames)
-{
-    createPlayers(playerNames);
-}
+// PlayerList::PlayerList(const vector<string>& playerNames)
+// {
+//     createPlayers(playerNames);
+// }
 
 void PlayerList::addPlayer(Player&& player)
 {
     players.push_back(std::move(player));
 }
 
-void PlayerList::addPlayer(const string& playerName)
+void PlayerList::addPlayer(const string& playerName, unique_ptr<IMoveProvider> moveProvider)
 {
-    players.emplace_back(playerName);
+    players.emplace_back(playerName, std::move(moveProvider));
 }
 
-void PlayerList::createPlayers(const vector<string>& playerNames)
-{
-    players.clear();
+// void PlayerList::createPlayers(const vector<string>& playerNames)
+// {
+//     players.clear();
 
-    for(const auto& playerName : playerNames)
-        addPlayer(playerName);
-}
+//     for(const auto& playerName : playerNames)
+//         addPlayer(playerName);
+// }
 
 void PlayerList::clear()
 {

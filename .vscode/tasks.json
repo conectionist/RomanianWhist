@@ -19,6 +19,7 @@
                 "${workspaceFolder}/TerminalRomanianWhist.cpp",
                 "${workspaceFolder}/PlayerList.cpp",
                 "${workspaceFolder}/CardValidator.cpp",
+                "${workspaceFolder}/ConsoleMoveProvider.cpp",
                 "-o",
                 "${workspaceFolder}/main"
             ],
