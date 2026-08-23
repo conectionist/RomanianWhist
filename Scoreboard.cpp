@@ -17,10 +17,7 @@ void Scoreboard::initialize(const GameStructure &structure,
 
     vector<unsigned int> gameNumbers;
 
-    // TODO: 
-    // for the moment we'll only consider the standard structure (1-8-1)
-    // we'll implement 8-1-8 later
-    if(true/*structure == GameStructure::S_181*/)
+    if(structure == GameStructure::S_181)
     {
         for(unsigned int i = 0 ; i < players.size() ; i++)
             gameNumbers.push_back(1);
@@ -36,18 +33,35 @@ void Scoreboard::initialize(const GameStructure &structure,
 
         for(unsigned int i = 0 ; i < players.size() ; i++)
             gameNumbers.push_back(1);
+    }
+    else    // 8-1-8
+    {
+        for(unsigned int i = 0 ; i < players.size() ; i++)
+            gameNumbers.push_back(8);
 
-        for(int i : gameNumbers)
-        {
-            Round r(i, currentPlayer);
+        for(unsigned int i = 7 ; i >= 2 ; i--)
+            gameNumbers.push_back(i);
 
-            if(i == 1 && all1GamesAreForehead)
-                r.setRoundType(RoundType::Forehead);  
+        for(unsigned int i = 0 ; i < players.size() ; i++)
+            gameNumbers.push_back(1);
 
-            addRound(std::move(r));
+        for(unsigned int i = 2 ; i <= 7 ; i++)
+            gameNumbers.push_back(i);
 
-            currentPlayer = players.next(currentPlayer);
-        }
+        for(unsigned int i = 0 ; i < players.size() ; i++)
+            gameNumbers.push_back(8);
+    }
+
+    for(int i : gameNumbers)
+    {
+        Round r(i, currentPlayer);
+
+        if(i == 1 && all1GamesAreForehead)
+            r.setRoundType(RoundType::Forehead);  
+
+        addRound(std::move(r));
+
+        currentPlayer = players.next(currentPlayer);
     }
 
     if(endWithForeheadAndHidden)
