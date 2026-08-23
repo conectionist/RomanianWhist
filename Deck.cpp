@@ -19,3 +19,13 @@ Card *Deck::getCardAt(unsigned int i)
 {
     return &deck[i];
 }
+
+Card& Deck::operator[](size_type index)
+{
+    return deck[index];
+}
+
+const Card& Deck::operator[](size_type index) const
+{
+    return deck[index];
+}

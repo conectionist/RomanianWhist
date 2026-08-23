@@ -3,6 +3,7 @@
 
 #include "Card.h"
 
+#include <cstddef>
 #include <vector>
 
 using std::vector;
@@ -13,9 +14,14 @@ private:
     vector<Card> deck;
 
 public:
+    using size_type = vector<Card>::size_type;
+
     void addCard(Card&& card);
     void shuffle();
     Card* getCardAt(unsigned int i);
+
+    Card& operator[](size_type index);
+    const Card& operator[](size_type index) const;
 };
 
 #endif

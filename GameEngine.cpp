@@ -68,13 +68,13 @@ void GameEngine::dealCards()
         for(unsigned int j = 0 ; j < players.size() ; j++)
         {
             index = gameCount * j + i;
-            players[j].addCardToHand(deck.getCardAt(index));
+            players[j].addCardToHand(&deck[index]);
         }
     }
 
     if(gameCount < 8)
     {
-        scoreboard.getCurrentRound().setTrumpCard(deck.getCardAt(index + 1));
+        scoreboard.getCurrentRound().setTrumpCard(&deck[index + 1]);
     }
 }
 
