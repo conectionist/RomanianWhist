@@ -5,11 +5,6 @@
 GameEngine::GameEngine() : status(GameStatus::NotStarted)
 {}
 
-void GameEngine::addPlayer(Player &&player)
-{
-    players.addPlayer(std::move(player));
-}
-
 void GameEngine::addPlayer(const string &name, unique_ptr<IMoveProvider> moveProvider)
 {
     players.addPlayer(name, std::move(moveProvider));
@@ -32,18 +27,9 @@ void GameEngine::initializeDeck(unsigned int playerCount)
         }   
 }
 
-GameStatus GameEngine::getStatus()
-{
-    return status;
-}
-
 void GameEngine::setStatus(GameStatus _status)
 {
     status = _status;
-}
-
-void GameEngine::start()
-{
 }
 
 bool GameEngine::isInProgress()
@@ -82,11 +68,6 @@ Card *GameEngine::getCurrentTrumpCard()
 {
     return scoreboard.getCurrentRound().getTrumpCard();
 }
-
-// void GameEngine::createPlayers(const vector<string> &playerNames)
-// {
-//     players.createPlayers(playerNames);
-// }
 
 PlayerList::iterator GameEngine::getFirstPlayerOfTheRound()
 {

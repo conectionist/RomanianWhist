@@ -29,10 +29,8 @@ public:
                     bool all1GamesAreForehead,
                     PlayerList& players);
     
-    Round& getRound(int i);
     void incrementCurrentRound();
     Round& getCurrentRound();
-    vector<Round> getAllRounds();
     unsigned int getRoundCount() const;
     unsigned int getCurrentRoundIndex() const;
     

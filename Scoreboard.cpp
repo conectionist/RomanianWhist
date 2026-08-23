@@ -65,19 +65,9 @@ void Scoreboard::initialize(const GameStructure &structure,
     }
 }
 
-// void Scoreboard::addRound(const Round &round)
-// {
-//     rounds.push_back(round);
-// }
-
 void Scoreboard::addRound(Round &&round)
 {
     rounds.push_back(std::move(round));
-}
-
-Round &Scoreboard::getRound(int i)
-{
-    return rounds[i];
 }
 
 void Scoreboard::incrementCurrentRound()
@@ -87,12 +77,7 @@ void Scoreboard::incrementCurrentRound()
 
 Round &Scoreboard::getCurrentRound()
 {
-    return getRound(currentRound);
-}
-
-vector<Round> Scoreboard::getAllRounds()
-{
-    return rounds;
+    return rounds[currentRound];
 }
 
 unsigned int Scoreboard::getRoundCount() const

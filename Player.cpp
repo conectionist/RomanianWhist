@@ -34,25 +34,7 @@ const vector<Card*>& Player::getHand() const
 
 Card* Player::playCard(Card* trump, const Suit* leadSuit)
 {
-    // vector<Card*> legalCards = cardValidator.getLegalCards(hand, trump, leadSuit);
-
-    // // TODO: Temporary. Always play the first legal card; no strategy yet.
-    // Card* card = legalCards[0];
-    // hand.erase(std::find(hand.begin(), hand.end(), card));
-    // return card;
-
     return moveProvider->playCard(hand, trump, leadSuit);
-}
-
-bool Player::hasSuit(Suit suit) const
-{
-    for(const auto* card : hand)
-    {
-        if(card->suit == suit)
-            return true;
-    }
-
-    return false;
 }
 
 unsigned int Player::getBet(Card* trump, bool isFirstPlayer) const

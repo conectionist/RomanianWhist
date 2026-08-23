@@ -4,32 +4,9 @@
 #include <stdexcept>
 #include <utility>
 
-// PlayerList::PlayerList(const vector<string>& playerNames)
-// {
-//     createPlayers(playerNames);
-// }
-
-void PlayerList::addPlayer(Player&& player)
-{
-    players.push_back(std::move(player));
-}
-
 void PlayerList::addPlayer(const string& playerName, unique_ptr<IMoveProvider> moveProvider)
 {
     players.emplace_back(playerName, std::move(moveProvider));
-}
-
-// void PlayerList::createPlayers(const vector<string>& playerNames)
-// {
-//     players.clear();
-
-//     for(const auto& playerName : playerNames)
-//         addPlayer(playerName);
-// }
-
-void PlayerList::clear()
-{
-    players.clear();
 }
 
 bool PlayerList::empty() const

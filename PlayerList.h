@@ -23,12 +23,8 @@ public:
     using size_type = list<Player>::size_type;
 
     PlayerList() = default;
-    //explicit PlayerList(const vector<string>& playerNames);
 
-    void addPlayer(Player&& player);
     void addPlayer(const string& playerName, unique_ptr<IMoveProvider> moveProvider);
-    //void createPlayers(const vector<string>& playerNames);
-    void clear();
 
     bool empty() const;
     size_type size() const;

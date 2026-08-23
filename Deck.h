@@ -18,7 +18,6 @@ public:
 
     void addCard(Card&& card);
     void shuffle();
-    Card* getCardAt(unsigned int i);
 
     Card& operator[](size_type index);
     const Card& operator[](size_type index) const;

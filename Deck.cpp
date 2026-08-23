@@ -15,11 +15,6 @@ void Deck::shuffle()
     std::shuffle(deck.begin(), deck.end(), generator);
 }
 
-Card *Deck::getCardAt(unsigned int i)
-{
-    return &deck[i];
-}
-
 Card& Deck::operator[](size_type index)
 {
     return deck[index];

@@ -2,7 +2,6 @@
 #define PLAYER_H
 
 #include "Card.h"
-#include "CardValidator.h"
 #include "IMoveProvider.h"
 
 #include <string>
@@ -17,13 +16,12 @@ class Player
 {
 private:
     string name;
+    unique_ptr<IMoveProvider> moveProvider;
     vector<Card*> hand;
-    CardValidator cardValidator;
     int totalScore;
     int currentRoundScore;
     unsigned int consecutiveWins;
     unsigned int consecutiveLosses;
-    unique_ptr<IMoveProvider> moveProvider;
 
 public:
     Player(const string& _name, unique_ptr<IMoveProvider> _moveProvider);
@@ -32,7 +30,6 @@ public:
     void clearHand();
     const vector<Card*>& getHand() const;
     Card* playCard(Card* trump, const Suit* leadSuit);
-    bool hasSuit(Suit suit) const;
     unsigned int getBet(Card* trump, bool isFirstPlayer) const;
     
     int getTotalScore() const;
