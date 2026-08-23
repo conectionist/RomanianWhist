@@ -6,134 +6,74 @@ Turn the current terminal prototype into a playable Romanian Whist game with cle
 
 ## Current State
 
-The project already has the main domain objects:
+The game already runs end-to-end in AI-vs-AI mode. The following are fully implemented:
 
 - `Card`: rank/suit representation and display.
-- `Deck`: stores cards and exposes indexed access.
-- `Player`: stores name, hand, and next-player pointer.
-- `Trick`: represents one trick.
-- `Round`: stores trick count, trump card, first player, round type, bets, and results.
-- `Scoreboard`: creates the round schedule.
-- `GameEngine`: owns players, deck, scoreboard, and game status.
-- `TerminalRomanianWhist`: handles setup and the terminal game loop.
+- `Deck`: initialization by player count, real shuffling.
+- `Player`: name, hand, score, streak counters, `IMoveProvider` delegation.
+- `Trick`: lead suit, played cards, winner.
+- `Round`: trick count, trump card, first player, round type, bets, and results.
+- `Scoreboard`: generates the complete round schedule for both `1-8-1` and `8-1-8`, advances rounds, detects game end.
+- `GameEngine`: owns players, deck, scoreboard; wires dealing, betting, card play, trick winner logic, scoring.
+- `TerminalRomanianWhist`: full game loop — shuffle, deal, betting, trick play, scoring, final standings.
+- `CardValidator`: enforces follow-suit → trump → anything priority.
+- Trick winner logic: highest trump wins; otherwise highest lead-suit card wins.
+- Scoring: `5 + bid` on exact, `-abs(bid - actual)` on miss, streak bonuses/penalties at 5 consecutive wins/losses (excluding 1-card rounds).
 
-Important gaps:
+Remaining gaps:
 
-- Deck shuffling is not implemented.
-- Player betting always returns `0`.
-- Player turn order is not wired.
-- The game loop does not play tricks.
-- Trick winner logic is missing.
-- Score calculation is missing.
-- Rounds never advance.
-- The game never reaches `Finished`.
-- `8-1-8` is listed but not implemented.
-- Several classes store raw pointers into vectors, which needs careful cleanup or replacement.
+- `initialize()` is disabled; the game starts with a hardcoded test setup.
+- Bet input is not validated (no range check, no final-bidder restriction).
+- `RoundType::Forehead` and `RoundType::Hidden` are stored in the schedule but the UI ignores them.
+- No automated tests.
 
-## Rule Decisions To Confirm
+## Rule Decisions (All Confirmed)
 
-Before implementing scoring and round validation, decide these house rules:
+1. **Player count**: 2–6 players.
 
-1. Supported player count:
-   - Confirmed: support 2-6 players.
-   - Two-player Romanian Whist is valid, even if it is less fun than games with more players.
-
-2. Deck size by player count:
-   - Confirmed: use two ranks per player, across all four suits.
+2. **Deck size**: two ranks per player, across all four suits.
    - 2 players: Ace, King, Queen, Jack.
-   - 3 players: Ace, King, Queen, Jack, 10, 9.
-   - 4 players: Ace, King, Queen, Jack, 10, 9, 8, 7.
+   - 3 players: Ace through 9.
+   - 4 players: Ace through 7.
    - 5 players: Ace through 5.
    - 6 players: Ace through 3.
 
-3. Round structure:
-   - Confirmed: in both structures, the 1-card rounds and 8-card rounds repeat once per player.
-   - `1-8-1`: repeated 1-card rounds, then 2 through 7, repeated 8-card rounds, then 7 through 2, then repeated 1-card rounds.
-   - `8-1-8`: the reverse of `1-8-1`: repeated 8-card rounds, then 7 through 2, repeated 1-card rounds, then 2 through 7, then repeated 8-card rounds.
-   - 4-player `1-8-1` example: `1,1,1,1,2,3,4,5,6,7,8,8,8,8,7,6,5,4,3,2,1,1,1,1`.
-   - 4-player `8-1-8` example: `8,8,8,8,7,6,5,4,3,2,1,1,1,1,2,3,4,5,6,7,8,8,8,8`.
+3. **Round structure**: in both structures, the 1-card and 8-card rounds repeat once per player.
+   - `1-8-1`: repeated 1-card rounds, 2–7, repeated 8-card rounds, 7–2, repeated 1-card rounds.
+   - `8-1-8`: repeated 8-card rounds, 7–2, repeated 1-card rounds, 2–7, repeated 8-card rounds.
 
-4. Trump rules:
-   - Confirmed: this applies for all player counts and deck sizes.
-   - For rounds below 8 cards, turn the next deck card as trump.
-   - For 8-card rounds, there is no trump.
+4. **Trump**: for rounds below 8 cards, turn the next deck card as trump. For 8-card rounds, no trump.
 
-5. Bidding restriction:
-   - Confirmed: the final bidder is forbidden from making the total bids equal the number of tricks in the round.
-   - The last player's valid bid range is still `0` through the number of cards in the round, except for the one value that would make the table's total bid equal the round hand count.
+5. **Bidding restriction**: the final bidder cannot make the total bids equal the number of tricks in the round.
 
-6. Play restrictions:
-   - Confirmed: legal play follows a strict priority order.
-   - First priority: if the player has the lead suit, they must play the lead suit.
-   - Second priority: if the player has no lead-suit card but has trump, they must play trump.
-   - Third priority: if the player has neither the lead suit nor trump, they may play anything.
-   - Overtrumping is not required. When a player must play trump, they do not have to beat an already-played trump card.
-   Observation: if a player has both the lead suit and a trump, the player must play the lead. they cannot choose between either playing the lead suit or the trump.
+6. **Play restrictions** (priority order):
+   - Must follow lead suit if possible.
+   - Must play trump if no lead-suit card is held.
+   - May play anything if neither lead suit nor trump is held.
+   - Overtrumping is not required.
 
-7. Scoring:
-   - Confirmed base scoring:
-     - Exact bid scores `5 + bid`.
-     - Missed bid scores `-abs(bid - actual)`.
-   - Confirmed streak bonuses and penalties:
-     - If a player wins 5 consecutive rounds, excluding 1-card rounds, they receive a bonus of 10 extra points on the 5th round in addition to the normal round score.
-     - If a player loses 5 consecutive rounds, excluding 1-card rounds, they receive a penalty of 10 extra points on the 5th round in addition to the normal round loss.
-   - For implementation: streak counters should ignore 1-card rounds entirely.
+7. **Scoring**:
+   - Exact bid: `5 + bid`.
+   - Missed bid: `-abs(bid - actual)`.
+   - Streak bonus: +10 on the 5th consecutive win (excluding 1-card rounds).
+   - Streak penalty: -10 on the 5th consecutive loss (excluding 1-card rounds).
 
-8. Special rounds:
-   - `Forehead`: the player cannot see their own card before betting, but all other players can see it.
-   - `Hidden`: nobody can see the player's card before betting, including the player and all other players. Everybody bets blindly.
-   - Confirmed: whether all 1-card games are forehead rounds is controlled by the `all1GamesAreForehead` flag chosen by the user at the beginning of the game.
-   - Current implementation note: `all1GamesAreForehead` is already passed into `Scoreboard::initialize`, and every 1-card round is marked as `RoundType::Forehead` when the flag is true.
-   - Current implementation note: `endWithForeheadAndHidden` already appends one final forehead round and one final hidden round.
+8. **Special rounds**:
+   - `Forehead`: the active player cannot see their own card before betting; all others can.
+   - `Hidden`: nobody can see the active player's card before betting.
+   - `all1GamesAreForehead` flag marks all 1-card rounds as forehead.
+   - `endWithForeheadAndHidden` appends one forehead and one hidden round at the end.
 
-## Implementation Phases
-
-### Phase 1: Stabilize The Core Model
-
-- Add stable player identity instead of relying on names or raw vector addresses.
-- Replace fragile `Player*` ownership patterns where practical.
-- Ensure player order can be iterated safely from any starting player.
-- Decide whether `GameEngine` or `Scoreboard` is the source of truth for current round state.
-- Make getters const-correct where useful.
-- Avoid copying players when round state needs references to the live player list.
-
-Expected result:
-
-- The engine can safely identify players, first player, next player, and round participants.
-
-### Phase 2: Deck And Dealing
-
-- Implement deck initialization for supported player counts.
-- Implement real shuffling.
-- Reset or rebuild the deck cleanly before each round.
-- Deal cards in correct player order.
-- Set trump card when applicable.
-- Expose each player's hand for terminal display and card selection.
-
-Expected result:
-
-- A round can begin with shuffled cards, valid hands, and the correct trump/no-trump state.
-
-### Phase 3: Round Schedule
-
-- Complete `Scoreboard::initialize` for both `1-8-1` and `8-1-8`.
-- Store round type for normal, forehead, and hidden rounds.
-- Validate round count and first-player rotation.
-- Add safe current-round advancement.
-- Detect when no rounds remain.
-
-Expected result:
-
-- The scoreboard can generate the complete match structure and advance through it.
+## Remaining Implementation
 
 ### Phase 4: Terminal Setup
 
-- Re-enable real setup instead of `initializeTest`.
-- Validate player count input.
-- Validate unique player names if names remain user-facing identifiers.
-- Validate game structure selection.
-- Validate special-round options.
-- Add a clear summary before starting the match.
+- Re-enable `initialize()` instead of `initializeTest()` in `startGame()`.
+- Fix off-by-one bug: the structure prompt shows "1) 1-8-1" but the code maps `gameStructure == 0` to `S_181`.
+- Validate player count is in range 2–6.
+- Validate player names are unique.
+- Validate all menu selections are within the offered options.
+- Add a clear match summary before the game loop starts.
 
 Expected result:
 
@@ -141,61 +81,30 @@ Expected result:
 
 ### Phase 5: Betting
 
-- Replace `Player::getBet()` stub with terminal input handled by `TerminalRomanianWhist` or a UI-facing input helper.
-- Validate bets are between `0` and cards in the round.
-- Apply final-bidder restriction if enabled.
-- Store each player's bid in the current round.
-- Display all bids before card play begins.
+- Validate bets are in range `[0, trick count]`.
+- Apply the final-bidder restriction: reject the one bid value that would make total bids equal the trick count.
+- Display each player's name and hand size before they bet.
+- Display all bids after the betting phase, before card play begins.
 
 Expected result:
 
-- Each round records valid bets from all players in the correct order.
+- Each round records valid bets from all players in the correct order, with the final-bidder rule enforced.
 
-### Phase 6: Card Play
+### Phase 6: Card Play (minor gaps)
 
-- Let each player choose a card from their hand.
-- Validate card choice.
-- Track lead suit for each trick.
-- Enforce follow-suit/trump rules.
-- Remove played cards from player hands.
-- Store played cards in `Trick`.
-- Rotate trick order based on previous trick winner.
+- Improve out-of-range card selection in `ConsoleMoveProvider`: prompt again instead of silently defaulting to index 0.
+- Display each player's hand before they choose a card.
 
 Expected result:
 
-- All tricks in a round can be played legally from terminal input.
-
-### Phase 7: Trick Winner Logic
-
-- Implement comparison rules:
-  - Highest trump wins if any trump was played.
-  - Otherwise highest card of the lead suit wins.
-- Track each player's won-trick count.
-- Set trick winner.
-- Set next trick's first player to the trick winner.
-
-Expected result:
-
-- The engine can determine every trick winner and accumulate round results.
-
-### Phase 8: Scoring
-
-- Store actual tricks won per player at the end of each round.
-- Implement scoring based on confirmed house rules.
-- Maintain cumulative scores across rounds.
-- Display round score and total score after each round.
-- Display final ranking at the end of the match.
-
-Expected result:
-
-- A complete game produces a correct scoreboard and final winner.
+- Human players can always see their options and are never silently forced into a wrong play.
 
 ### Phase 9: Special Rounds
 
-- Implement forehead round display rules.
-- Implement hidden round display rules after confirming exact behavior.
-- Ensure betting and play still use the same validation path.
-- Add clear terminal prompts for special rounds.
+- During a **Forehead** round: show all other players' cards to everyone, but hide the active player's card from themselves before betting.
+- During a **Hidden** round: hide the active player's card from all players before betting.
+- Add clear terminal prompts identifying forehead and hidden rounds.
+- Ensure betting and play validation still use the same path as normal rounds.
 
 Expected result:
 
@@ -203,40 +112,25 @@ Expected result:
 
 ### Phase 10: Tests And Verification
 
-- Add a build command or simple `Makefile`.
+- Add a `Makefile` or build script.
 - Add unit tests for:
   - Deck composition by player count.
-  - Round schedule generation.
-  - Legal card validation.
+  - Round schedule generation for both `1-8-1` and `8-1-8`.
+  - Legal card filtering (`CardValidator`).
   - Trick winner calculation.
-  - Scoring.
-  - Round advancement and game completion.
+  - Scoring, including streak bonuses and penalties.
+  - Round advancement and game completion detection.
 - Add at least one scripted integration test for a small deterministic match.
 
 Expected result:
 
 - Core game rules can be verified without playing manually every time.
 
-## Suggested Implementation Order
-
-1. Fix player identity and turn order.
-2. Implement deck shuffle and per-round reset.
-3. Finish round schedule and advancement.
-4. Restore real terminal initialization.
-5. Implement betting input and validation.
-6. Implement card choice and legal-play validation.
-7. Implement trick winner calculation.
-8. Implement scoring.
-9. Add final scoreboard and game completion.
-10. Add special rounds.
-11. Add tests and build tooling.
-
 ## Design Notes
 
 - Keep UI input/output in `TerminalRomanianWhist`.
 - Keep rule decisions in `GameEngine` or dedicated rule helpers, not scattered through terminal prompts.
-- Prefer value-based identifiers or stable indexes over raw `Player*` stored across vector copies.
-- Avoid using player name as the only key for score data unless names are validated as unique.
+- Player name is currently used as the key in `Round::bets`. Ensure names are validated as unique in Phase 4.
 - Keep `Round` focused on round state, not terminal behavior.
 - Keep `Scoreboard` focused on schedule and scores.
 
