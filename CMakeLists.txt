@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.21)
 
 project(RomanianWhistEngine
     VERSION 1.0.0
@@ -26,7 +26,13 @@ add_library(RomanianWhist::engine ALIAS romanian_whist_engine)
 
 target_compile_features(romanian_whist_engine PUBLIC cxx_std_20)
 
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/romanian_whist/Version.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/include/romanian_whist/Version.h
+    @ONLY)
+
 target_include_directories(romanian_whist_engine PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
