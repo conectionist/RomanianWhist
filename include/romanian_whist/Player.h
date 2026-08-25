@@ -4,9 +4,10 @@
 #include <romanian_whist/Card.h>
 #include <romanian_whist/IMoveProvider.h>
 
+#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
-#include <memory>
 
 namespace romanian_whist
 {
@@ -28,7 +29,11 @@ public:
     void clearHand();
     const std::vector<Card*>& getHand() const;
     Card* playCard(Card* trump, const Suit* leadSuit);
-    unsigned int getBet(Card* trump, bool isFirstPlayer) const;
+    // The hand is the player's own, so only the rest of the bidding context is
+    // passed in. `forbiddenBet` comes from GameEngine::getForbiddenBet().
+    unsigned int getBet(Card* trump,
+                        bool isFirstPlayer,
+                        std::optional<unsigned int> forbiddenBet) const;
     
     int getTotalScore() const;
     int getCurrentRoundScore() const;

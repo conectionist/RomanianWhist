@@ -5,9 +5,9 @@ namespace romanian_whist
 AiMoveProvider::AiMoveProvider(std::unique_ptr<IStrategy> _strategy) : strategy(std::move(_strategy))
 {}
 
-unsigned int AiMoveProvider::makeBet(const std::vector<Card *> &hand, Card *trump, bool isFirstPlayer)
+unsigned int AiMoveProvider::makeBet(const BetContext &context)
 {
-    return strategy->getBestBet(hand, trump, isFirstPlayer);
+    return strategy->getBestBet(context);
 }
 
 Card *AiMoveProvider::playCard(const std::vector<Card *> &hand, Card *trump, const Suit *leadSuit)

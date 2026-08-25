@@ -3,9 +3,12 @@
 
 namespace romanian_whist
 {
-unsigned int FirstCardStrategy::getBestBet(const std::vector<Card *> &hand, Card *trump, bool isFirstPlayer)
+unsigned int FirstCardStrategy::getBestBet(const BetContext &context)
 {
-    return 0;
+    // Bets nothing, in keeping with a strategy that puts no thought into its
+    // play either. A round always has at least one trick, so when zero is the
+    // bid barred from the final bidder, one is always still available.
+    return context.forbiddenBet == 0u ? 1u : 0u;
 }
 
 Card *FirstCardStrategy::getBestChoice(const std::vector<Card *> &hand, Card *trump, const Suit *leadSuit)

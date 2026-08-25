@@ -42,9 +42,11 @@ Card* Player::playCard(Card* trump, const Suit* leadSuit)
     return card;
 }
 
-unsigned int Player::getBet(Card* trump, bool isFirstPlayer) const
+unsigned int Player::getBet(Card* trump,
+                            bool isFirstPlayer,
+                            std::optional<unsigned int> forbiddenBet) const
 {
-    return moveProvider->makeBet(hand, trump, isFirstPlayer);
+    return moveProvider->makeBet(BetContext{hand, trump, isFirstPlayer, forbiddenBet});
 }
 
 int Player::getTotalScore() const

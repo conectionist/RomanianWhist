@@ -17,13 +17,13 @@ The game already runs end-to-end in AI-vs-AI mode. The following are fully imple
 - `GameEngine`: owns players, deck, scoreboard; wires dealing, betting, card play, trick winner logic, scoring.
 - `TerminalRomanianWhist`: full game loop — shuffle, deal, betting, trick play, scoring, final standings.
 - `CardValidator`: enforces follow-suit → trump → anything priority.
+- Bidding validation: range `[0, trick count]`, plus the final-bidder restriction via `GameEngine::getForbiddenBet()` / `isBetLegal()`, carried to players in `BetContext::forbiddenBet`.
 - Trick winner logic: highest trump wins; otherwise highest lead-suit card wins.
 - Scoring: `5 + bid` on exact, `-abs(bid - actual)` on miss, streak bonuses/penalties at 5 consecutive wins/losses (excluding 1-card rounds).
 
 Remaining gaps:
 
 - `initialize()` is disabled; the game starts with a hardcoded test setup.
-- Bet input is not validated (no range check, no final-bidder restriction).
 - `RoundType::Forehead` and `RoundType::Hidden` are stored in the schedule but the UI ignores them.
 - No automated tests.
 
@@ -65,14 +65,6 @@ Remaining gaps:
    - `endWithForeheadAndHidden` appends one forehead and one hidden round at the end.
 
 ## Remaining Implementation
-
-### Phase 5: Betting
-
-- Apply the final-bidder restriction: reject the one bid value that would make total bids equal the trick count.
-
-Expected result:
-
-- Each round records valid bets from all players in the correct order, with the final-bidder rule enforced.
 
 ### Phase 9: Special Rounds
 
