@@ -66,25 +66,9 @@ Remaining gaps:
 
 ## Remaining Implementation
 
-### Phase 4: Terminal Setup
-
-- Re-enable `initialize()` instead of `initializeTest()` in `startGame()`.
-- Fix off-by-one bug: the structure prompt shows "1) 1-8-1" but the code maps `gameStructure == 0` to `S_181`.
-- Validate player count is in range 2–6.
-- Validate player names are unique.
-- Validate all menu selections are within the offered options.
-- Add a clear match summary before the game loop starts.
-
-Expected result:
-
-- A user can configure a match from the terminal without editing code.
-
 ### Phase 5: Betting
 
-- Validate bets are in range `[0, trick count]`.
 - Apply the final-bidder restriction: reject the one bid value that would make total bids equal the trick count.
-- Display each player's name and hand size before they bet.
-- Display all bids after the betting phase, before card play begins.
 
 Expected result:
 
