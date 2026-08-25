@@ -37,7 +37,7 @@ struct Card
 
     Card();
     Card(Rank _rank, Suit _suit);
-    std::string toString();
+    std::string toString() const;
 };
 
 } // namespace romanian_whist

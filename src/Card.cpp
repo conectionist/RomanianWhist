@@ -8,7 +8,7 @@ Card::Card() : rank(Rank::Two), suit(Suit::Clubs)
 Card::Card(Rank _rank, Suit _suit) : rank(_rank), suit(_suit)
 {}
 
-std::string Card::toString()
+std::string Card::toString() const
 {
     std::string rankString;
     std::string suitString;
