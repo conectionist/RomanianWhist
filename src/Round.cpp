@@ -7,7 +7,8 @@ Round::Round(unsigned int _trickCount,
              RoundType _type) : trump(nullptr),
                                 trickCount(_trickCount),
                                 type(_type),
-                                firstPlayer(player)
+                                firstPlayer(player),
+                                openingPlayer(player)
 {}
 
 void Round::addTrick(const Trick &trick)
@@ -35,6 +36,11 @@ Card *Round::getTrumpCard()
     return trump;
 }
 
+const Card *Round::getTrumpCard() const
+{
+    return trump;
+}
+
 unsigned int Round::getTrickCount() const
 {
     return trickCount;
@@ -50,9 +56,24 @@ PlayerList::iterator Round::getFirstPlayer() const
     return firstPlayer;
 }
 
+PlayerList::iterator Round::getOpeningPlayer() const
+{
+    return openingPlayer;
+}
+
 void Round::setRoundType(RoundType _type)
 {
     type = _type;
+}
+
+RoundType Round::getRoundType() const
+{
+    return type;
+}
+
+std::size_t Round::getPlayedTrickCount() const
+{
+    return tricks.size();
 }
 
 unsigned int Round::getBet(const std::string& playerName) const
