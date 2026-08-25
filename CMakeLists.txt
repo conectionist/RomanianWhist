@@ -24,7 +24,7 @@ add_library(romanian_whist_engine STATIC
 # arrives via add_subdirectory() or a future find_package().
 add_library(RomanianWhist::engine ALIAS romanian_whist_engine)
 
-target_compile_features(romanian_whist_engine PUBLIC cxx_std_17)
+target_compile_features(romanian_whist_engine PUBLIC cxx_std_20)
 
 target_include_directories(romanian_whist_engine PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

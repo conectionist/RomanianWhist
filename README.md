@@ -1,6 +1,6 @@
 # Romanian Whist Engine
 
-A reusable C++17 game engine for [Romanian Whist](https://en.wikipedia.org/wiki/Romanian_Whist).
+A reusable C++20 game engine for [Romanian Whist](https://en.wikipedia.org/wiki/Romanian_Whist).
 It contains all the game logic — dealing, betting, trick resolution, scoring — and **no
 user interface**. You supply the UI by implementing a single interface.
 
@@ -10,7 +10,7 @@ The engine ships with AI opponents, so any client gets computer players for free
 
 ## Requirements
 
-- A C++17 compiler
+- A C++20 compiler
 - CMake 3.14 or newer
 
 ## Adding the engine to your project
