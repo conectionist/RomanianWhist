@@ -1,7 +1,5 @@
 #include <romanian_whist/AiMoveProvider.h>
 
-#include <algorithm>
-
 namespace romanian_whist
 {
 AiMoveProvider::AiMoveProvider(std::unique_ptr<IStrategy> _strategy) : strategy(std::move(_strategy))
@@ -12,11 +10,9 @@ unsigned int AiMoveProvider::makeBet(const std::vector<Card *> &hand, Card *trum
     return strategy->getBestBet(hand, trump, isFirstPlayer);
 }
 
-Card *AiMoveProvider::playCard(std::vector<Card *> &hand, Card *trump, const Suit *leadSuit)
+Card *AiMoveProvider::playCard(const std::vector<Card *> &hand, Card *trump, const Suit *leadSuit)
 {
-    auto* card = strategy->getBestChoice(hand, trump, leadSuit);
-    hand.erase(std::remove(hand.begin(), hand.end(), card), hand.end());
-    return card;
+    return strategy->getBestChoice(hand, trump, leadSuit);
 }
 
 } // namespace romanian_whist

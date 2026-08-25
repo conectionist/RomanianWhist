@@ -16,7 +16,7 @@ protected:
 public:
     virtual ~IStrategy() = default;
     virtual unsigned int getBestBet(const std::vector<Card*>& hand, Card* trump, bool isFirstPlayer) = 0;
-    virtual Card* getBestChoice(std::vector<Card*>& hand, Card* trump, const Suit* leadSuit) = 0;
+    virtual Card* getBestChoice(const std::vector<Card*>& hand, Card* trump, const Suit* leadSuit) = 0;
 };
 
 } // namespace romanian_whist

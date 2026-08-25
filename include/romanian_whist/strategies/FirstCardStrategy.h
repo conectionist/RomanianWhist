@@ -9,7 +9,7 @@ class FirstCardStrategy : public IStrategy
 {
 public:
     unsigned int getBestBet(const std::vector<Card*>& hand, Card* trump, bool isFirstPlayer) override;
-    Card* getBestChoice(std::vector<Card*>& hand, Card* trump, const Suit* leadSuit) override;
+    Card* getBestChoice(const std::vector<Card*>& hand, Card* trump, const Suit* leadSuit) override;
 };
 
 } // namespace romanian_whist

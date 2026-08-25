@@ -36,7 +36,10 @@ const std::vector<Card*>& Player::getHand() const
 
 Card* Player::playCard(Card* trump, const Suit* leadSuit)
 {
-    return moveProvider->playCard(hand, trump, leadSuit);
+    Card* card = moveProvider->playCard(hand, trump, leadSuit);
+    if(card != nullptr)
+        hand.erase(std::remove(hand.begin(), hand.end(), card), hand.end());
+    return card;
 }
 
 unsigned int Player::getBet(Card* trump, bool isFirstPlayer) const

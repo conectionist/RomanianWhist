@@ -8,7 +8,7 @@ unsigned int FirstCardStrategy::getBestBet(const std::vector<Card *> &hand, Card
     return 0;
 }
 
-Card *FirstCardStrategy::getBestChoice(std::vector<Card *> &hand, Card *trump, const Suit *leadSuit)
+Card *FirstCardStrategy::getBestChoice(const std::vector<Card *> &hand, Card *trump, const Suit *leadSuit)
 {
     std::vector<Card*> legalCards = cardValidator.getLegalCards(hand, trump, leadSuit);
 

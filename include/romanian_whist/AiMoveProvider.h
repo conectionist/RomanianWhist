@@ -15,7 +15,7 @@ private:
 public:
     AiMoveProvider(std::unique_ptr<IStrategy> _strategy);
     unsigned int makeBet(const std::vector<Card*>& hand, Card* trump, bool isFirstPlayer) override;
-    Card* playCard(std::vector<Card*>& hand, Card* trump, const Suit* leadSuit) override;
+    Card* playCard(const std::vector<Card*>& hand, Card* trump, const Suit* leadSuit) override;
 };
 
 } // namespace romanian_whist
