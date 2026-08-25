@@ -105,9 +105,7 @@ public:
     virtual ~IMoveProvider() = default;
 
     // How many tricks does this player bet they will win?
-    virtual unsigned int makeBet(const std::vector<Card*>& hand,
-                                 Card* trump,
-                                 bool isFirstPlayer) = 0;
+    virtual unsigned int makeBet(const BetContext& context) = 0;
 
     // Which card does this player play? Return one of the pointers from `hand`;
     // the engine removes it for you.
@@ -119,6 +117,24 @@ public:
 }
 ```
 
+`BetContext` carries everything the bid decision needs:
+
+```cpp
+struct BetContext
+{
+    const std::vector<Card*>& hand;              // size == the round's trick count
+    Card* trump = nullptr;                       // null in 8-card rounds
+    bool isFirstPlayer = false;                  // opens the bidding
+    std::optional<unsigned int> forbiddenBet;    // see below
+};
+```
+
+`forbiddenBet` is the bidding restriction: the final bidder may not make the
+round's bids add up to exactly the trick count. It is set only for that bidder,
+and only while a bid could still hit the total, so **an implementation that
+honours it whenever it is present is always making a legal bid.** Everything
+else in range `[0, hand.size()]` is fair game.
+
 Implement it once for your UI, then hand one instance to each human player:
 
 ```cpp
@@ -128,11 +144,10 @@ Implement it once for your UI, then hand one instance to each human player:
 class MyUiMoveProvider : public romanian_whist::IMoveProvider
 {
 public:
-    unsigned int makeBet(const std::vector<romanian_whist::Card*>& hand,
-                         romanian_whist::Card* trump,
-                         bool isFirstPlayer) override
+    unsigned int makeBet(const romanian_whist::BetContext& context) override
     {
-        return askUserForBet(hand, trump, isFirstPlayer);
+        // Re-prompt while the answer equals *context.forbiddenBet.
+        return askUserForBet(context);
     }
 
     romanian_whist::Card* playCard(const std::vector<romanian_whist::Card*>& hand,
@@ -192,7 +207,12 @@ while(game.isInProgress())
     for(unsigned int i = 0 ; i < game.getPlayerCount() ; i++)
     {
         bool isFirst = player->getName() == game.getFirstPlayerOfTheRound()->getName();
-        game.placeBet(player, player->getBet(game.getCurrentTrumpCard(), isFirst));
+
+        // Asked fresh each time: it only ever names a bid for the final bidder,
+        // and only once everyone before them has bid.
+        auto forbidden = game.getForbiddenBet();
+
+        game.placeBet(player, player->getBet(game.getCurrentTrumpCard(), isFirst, forbidden));
         player = game.getNextPlayer(player);
     }
 
@@ -264,14 +284,34 @@ determines bidding order, fixed for the round. `Round::getFirstPlayer()` is who
 leads the *next* trick, and is reassigned to each trick's winner as you call
 `setFirstPlayerOfTheRound()`.
 
+### Validating a bid
+
+The engine owns the bidding restriction so that clients do not each have to
+re-derive it:
+
+```cpp
+// The bid the final bidder may not make. Empty for every other bidder, and
+// empty once the bids already exceed the trick count - no bid can hit the
+// total then. Hand it to Player::getBet() and honouring it is enough.
+std::optional<unsigned int> forbidden = game.getForbiddenBet();
+
+// Or check a bid you already have, range included.
+if(!game.isBetLegal(bet))
+    reject(bet);
+```
+
+`placeBet()` records whatever it is given without judging it, so ask before you
+call it. A legal bid is one in `[0, getCurrentRoundTrickCount()]` that is not
+`*getForbiddenBet()`.
+
 ### Built-in AI strategies
 
 `AiMoveProvider` delegates its decisions to an `IStrategy`:
 
 | Strategy | Behaviour |
 |---|---|
-| `RandomCardStrategy` | Plays a random legal card; always bets 0 |
-| `FirstCardStrategy` | Plays the first legal card; always bets 0 |
+| `RandomCardStrategy` | Plays a random legal card; bids a random legal number of tricks |
+| `FirstCardStrategy` | Plays the first legal card; bids 0, or 1 when 0 is barred |
 
 Write your own by implementing `IStrategy` from
 `<romanian_whist/strategies/IStrategy.h>`.
@@ -284,6 +324,7 @@ Write your own by implementing `IStrategy` from
 include/romanian_whist/     public headers — this is the include root
 ├── GameEngine.h            main facade
 ├── IMoveProvider.h         implement this to supply a UI
+├── BetContext.h            what IMoveProvider::makeBet is handed
 ├── CardValidator.h         legal-move rules
 ├── AiMoveProvider.h        AI player driven by an IStrategy
 └── strategies/             IStrategy + the bundled strategies

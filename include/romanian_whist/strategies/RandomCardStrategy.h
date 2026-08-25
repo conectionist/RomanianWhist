@@ -8,7 +8,7 @@ namespace romanian_whist
 class RandomCardStrategy : public IStrategy
 {
 public:
-    unsigned int getBestBet(const std::vector<Card*>& hand, Card* trump, bool isFirstPlayer) override;
+    unsigned int getBestBet(const BetContext& context) override;
     Card* getBestChoice(const std::vector<Card*>& hand, Card* trump, const Suit* leadSuit) override;
 };
 

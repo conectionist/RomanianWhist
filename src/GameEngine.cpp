@@ -91,6 +91,46 @@ unsigned int GameEngine::getPlayerCount() const
     return players.size();
 }
 
+std::optional<unsigned int> GameEngine::getForbiddenBet() const
+{
+    const Round& round = scoreboard.getCurrentRound();
+
+    unsigned int betsPlaced = 0;
+    unsigned int total = 0;
+
+    // Counted by walking the players rather than by asking the bets map for its
+    // size, because setResult() writes into that same map and would inflate it
+    // once the round is under way.
+    for(const auto& player : players)
+    {
+        if(round.hasBet(player.getName()))
+        {
+            betsPlaced++;
+            total += round.getBet(player.getName());
+        }
+    }
+
+    if(betsPlaced + 1 != players.size())
+        return std::nullopt;
+
+    const unsigned int trickCount = round.getTrickCount();
+
+    if(total > trickCount)
+        return std::nullopt;
+
+    return trickCount - total;
+}
+
+bool GameEngine::isBetLegal(unsigned int bet) const
+{
+    if(bet > getCurrentRoundTrickCount())
+        return false;
+
+    const std::optional<unsigned int> forbidden = getForbiddenBet();
+
+    return !forbidden || bet != *forbidden;
+}
+
 void GameEngine::placeBet(PlayerList::iterator player, unsigned int bet)
 {
     scoreboard.getCurrentRound().setBet(player, bet);

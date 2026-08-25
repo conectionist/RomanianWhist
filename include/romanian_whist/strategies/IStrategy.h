@@ -1,6 +1,7 @@
 #ifndef ISTRATEGY_H
 #define ISTRATEGY_H 
 
+#include <romanian_whist/BetContext.h>
 #include <romanian_whist/Card.h>
 #include <romanian_whist/CardValidator.h>
 
@@ -15,7 +16,7 @@ protected:
     
 public:
     virtual ~IStrategy() = default;
-    virtual unsigned int getBestBet(const std::vector<Card*>& hand, Card* trump, bool isFirstPlayer) = 0;
+    virtual unsigned int getBestBet(const BetContext& context) = 0;
     virtual Card* getBestChoice(const std::vector<Card*>& hand, Card* trump, const Suit* leadSuit) = 0;
 };
 

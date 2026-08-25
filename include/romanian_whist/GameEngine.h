@@ -5,9 +5,10 @@
 #include <romanian_whist/Scoreboard.h>
 #include <romanian_whist/Deck.h>
 
+#include <optional>
 #include <string>
-#include <vector>
 #include <utility>
+#include <vector>
 
 namespace romanian_whist
 {
@@ -42,6 +43,17 @@ public:
     PlayerList::iterator getFirstPlayerOfTheRound();
     PlayerList::iterator getNextPlayer(PlayerList::iterator player);
     unsigned int getPlayerCount() const;
+    // The bidding restriction: the final bidder may not make the round's bids
+    // add up to exactly the trick count. getForbiddenBet() names the single bid
+    // that would, and is empty for everyone but the final bidder - and empty
+    // for them too when the bids already exceed the trick count, since no bid
+    // can bring the total back down to it.
+    //
+    // Ask either of these before calling placeBet(), which records whatever it
+    // is given without judging it.
+    std::optional<unsigned int> getForbiddenBet() const;
+    bool isBetLegal(unsigned int bet) const;
+
     void placeBet(PlayerList::iterator player, unsigned int bet);
     void setResult(PlayerList::iterator player, unsigned int wonTricks);
     unsigned int getCurrentRoundTrickCount() const;
