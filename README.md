@@ -20,7 +20,7 @@ The engine ships with AI opponents, so any client gets computer players for free
 From the root of your project:
 
 ```bash
-git submodule add https://github.com/conectionist/RomanianWhist.git libs/RomanianWhistEngine
+git submodule add https://github.com/conectionist/romanian_whist_engine.git libs/RomanianWhistEngine
 git commit -m "Add Romanian Whist engine as a submodule"
 ```
 
