@@ -34,7 +34,7 @@ void GameEngine::setStatus(GameStatus _status)
     status = _status;
 }
 
-bool GameEngine::isInProgress()
+bool GameEngine::isInProgress() const
 {
     return status == GameStatus::InProgress;
 }
@@ -71,6 +71,11 @@ Card *GameEngine::getCurrentTrumpCard()
     return scoreboard.getCurrentRound().getTrumpCard();
 }
 
+const Card *GameEngine::getCurrentTrumpCard() const
+{
+    return scoreboard.getCurrentRound().getTrumpCard();
+}
+
 PlayerList::iterator GameEngine::getFirstPlayerOfTheRound()
 {
     return scoreboard.getCurrentRound().getFirstPlayer();
@@ -81,7 +86,7 @@ PlayerList::iterator GameEngine::getNextPlayer(PlayerList::iterator player)
     return players.next(player);
 }
 
-unsigned int GameEngine::getPlayerCount()
+unsigned int GameEngine::getPlayerCount() const
 {
     return players.size();
 }
@@ -102,7 +107,7 @@ void GameEngine::clearAllPlayerHands()
         player.clearHand();
 }
 
-unsigned int GameEngine::getCurrentRoundTrickCount()
+unsigned int GameEngine::getCurrentRoundTrickCount() const
 {
     return scoreboard.getCurrentRound().getTrickCount();
 }
@@ -166,6 +171,31 @@ std::vector<std::pair<std::string, std::pair<int, int>>> GameEngine::getPlayerRo
     }
     
     return roundScores;
+}
+
+const PlayerList &GameEngine::getPlayers() const
+{
+    return players;
+}
+
+const Round &GameEngine::getCurrentRound() const
+{
+    return scoreboard.getCurrentRound();
+}
+
+unsigned int GameEngine::getCurrentRoundIndex() const
+{
+    return scoreboard.getCurrentRoundIndex();
+}
+
+unsigned int GameEngine::getRoundCount() const
+{
+    return scoreboard.getRoundCount();
+}
+
+RoundType GameEngine::getCurrentRoundType() const
+{
+    return scoreboard.getCurrentRound().getRoundType();
 }
 
 bool GameEngine::cardBeats(const Card& candidate, const Card& currentBest, Suit leadSuit)

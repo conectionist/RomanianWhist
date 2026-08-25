@@ -30,6 +30,7 @@ public:
     
     void incrementCurrentRound();
     Round& getCurrentRound();
+    const Round& getCurrentRound() const;
     unsigned int getRoundCount() const;
     unsigned int getCurrentRoundIndex() const;
     
