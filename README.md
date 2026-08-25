@@ -109,8 +109,9 @@ public:
                                  Card* trump,
                                  bool isFirstPlayer) = 0;
 
-    // Which card does this player play? Remove it from `hand` before returning it.
-    virtual Card* playCard(std::vector<Card*>& hand,
+    // Which card does this player play? Return one of the pointers from `hand`;
+    // the engine removes it for you.
+    virtual Card* playCard(const std::vector<Card*>& hand,
                            Card* trump,
                            const Suit* leadSuit) = 0;
 };
@@ -134,7 +135,7 @@ public:
         return askUserForBet(hand, trump, isFirstPlayer);
     }
 
-    romanian_whist::Card* playCard(std::vector<romanian_whist::Card*>& hand,
+    romanian_whist::Card* playCard(const std::vector<romanian_whist::Card*>& hand,
                                    romanian_whist::Card* trump,
                                    const romanian_whist::Suit* leadSuit) override
     {
@@ -142,9 +143,8 @@ public:
         romanian_whist::CardValidator validator;
         auto legal = validator.getLegalCards(hand, trump, leadSuit);
 
-        romanian_whist::Card* chosen = askUserToPick(legal);
-        hand.erase(std::find(hand.begin(), hand.end(), chosen));
-        return chosen;
+        // Return nullptr if `legal` is empty - the built-in strategies do.
+        return askUserToPick(legal);
     }
 };
 ```
@@ -218,6 +218,51 @@ for(const auto& [name, score] : game.getPlayerScores())
 for(const auto& [name, scores] : game.getPlayerRoundScores())
     display(name, scores.first, scores.second);
 ```
+
+### Reading live game state
+
+`getPlayerScores()` is enough for a score table. A richer interface — one that
+shows who bid what, who is taking tricks, or which round type is in play — reads
+the game directly:
+
+```cpp
+// Where are we?
+display(game.getCurrentRoundIndex() + 1, game.getRoundCount());  // "round 7 of 24"
+display(game.getCurrentRoundTrickCount());                       // cards dealt this round
+display(game.getCurrentRoundType());                             // Normal / Forehead / Hidden
+
+// What has each seat done?
+const romanian_whist::Round& round = game.getCurrentRound();
+
+for(const auto& player : game.getPlayers())
+{
+    const std::string& name = player.getName();
+
+    // getBet() returns 0 for a player who has not bid yet, which is
+    // indistinguishable from a genuine bid of 0. Ask hasBet() first.
+    if(round.hasBet(name))
+        display(name, round.getBet(name), round.getActual(name));
+    else
+        display(name, "-");
+
+    display(player.getHand().size(), player.getTotalScore());
+
+    // Five exact bids in a row is worth +10, five misses -10.
+    display(player.getConsecutiveWins(), player.getConsecutiveLosses());
+}
+```
+
+`Round::getActual()` reflects whatever you last passed to
+`GameEngine::setResult()`. Calling `setResult()` after every trick rather than
+once at the end of the round keeps it live, which is what a running "tricks won"
+column wants — the call is an assignment, not an increment, so repeating it is
+safe.
+
+Two accessors answer different questions about turn order, and mixing them up is
+easy: `Round::getOpeningPlayer()` is who led the round's first trick and so
+determines bidding order, fixed for the round. `Round::getFirstPlayer()` is who
+leads the *next* trick, and is reassigned to each trick's winner as you call
+`setFirstPlayerOfTheRound()`.
 
 ### Built-in AI strategies
 
