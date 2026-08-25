@@ -160,9 +160,9 @@ std::vector<std::pair<std::string, std::pair<int, int>>> GameEngine::getPlayerRo
     
     for(const auto& player : players)
     {
-        roundScores.emplace_back(player.getName(), 
-                               std::pair<int, int>(player.getCurrentRoundScore(), 
-                                             player.getTotalScore()));
+        roundScores.emplace_back(player.getName(),
+                               std::pair<int, int>(player.getCurrentRoundScore(),
+                                             player.getTotalScore() + player.getCurrentRoundScore()));
     }
     
     return roundScores;
