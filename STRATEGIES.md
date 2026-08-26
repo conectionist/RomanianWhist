@@ -128,11 +128,154 @@ Everything else is built from that ordering:
 | `chooseDuckingCard` | Nothing is safe, so lead the **least** dangerous card | Dump the **most** dangerous card that still cannot win. If every legal card would win, take the trick with the **least** dangerous one — cheapest possible, and a later player may still overtake |
 | `chooseWinningCard` | Lead the **most** dangerous card | Take it with the **least** dangerous card that wins. If none can win, discard the **least** dangerous and keep the good ones for a trick still worth having |
 
-The ducking case is the one that matters. Concretely, holding J♥ and 9♥:
+The ducking case is the one that matters — see [Worked examples](#worked-examples) below for
+what it does in practice.
 
-- **Q♥ led** — the jack cannot beat the queen, so it is safe. Shed the jack.
-- **10♥ led** — the jack *would* win. Duck with the nine and keep the jack for a trick where
-  something bigger has already been played.
+---
+
+## Worked examples
+
+Every choice below is real output from the strategies, not an illustration written by hand.
+`Random` is left out because its answer is a coin toss.
+
+### Single decisions
+
+**1. A queen is led, holding jack and nine.** No trump.
+
+```
+hand   J♥ 9♥        table  Q♥        winning  Q♥
+    LowRisk  J♥      Ducking  J♥      FirstCard  J♥
+```
+
+The jack cannot beat the queen, so it is safe — shed the biggest card that cannot win. All
+three happen to agree.
+
+**2. The same hand, but a ten is led.**
+
+```
+hand   J♥ 9♥        table  10♥       winning  10♥
+    LowRisk  9♥      Ducking  9♥      FirstCard  J♥
+```
+
+Now the jack *would* win. Duck with the nine and keep the jack for a trick where something
+bigger has already been played. `FirstCardStrategy` plays the jack and takes a trick it
+bid against — this single position is the whole difference between them.
+
+**3. Void in the lead suit and in trump — a free discard.**
+
+```
+hand   A♦ 8♦ 7♣     table  Q♥        winning  Q♥        trump  none
+    LowRisk  A♦      Ducking  A♦      FirstCard  A♦
+```
+
+An off-suit discard can never win, so *everything* is safe. That makes it the best possible
+moment to get rid of the ace, and both low-risk strategies take it.
+
+**4. Void in the lead suit, but holding trumps — forced to trump.**
+
+```
+hand   A♠ 7♠        table  Q♥        winning  Q♥        trump  ♠
+    LowRisk  7♠      Ducking  7♠      FirstCard  A♠
+```
+
+The rules force a trump when you cannot follow suit, so this trick is being won whether the
+bot likes it or not. It wins with the cheapest card it can. `FirstCardStrategy` throws the
+ace of trumps away on the same trick.
+
+**5. Somebody has already trumped in.**
+
+```
+hand   A♥ 9♥        table  10♥ 7♠     winning  7♠        trump  ♠
+    LowRisk  A♥      Ducking  A♥      FirstCard  A♥
+```
+
+The seven of trumps is beating the ten of hearts, so the ace of hearts is now *safe* — it
+cannot take a trick that has already been trumped. Out it goes.
+
+**6. Every legal card would win — cornered.**
+
+```
+hand   A♥ K♥        table  9♥        winning  9♥        trump  none
+    LowRisk  K♥      Ducking  K♥      FirstCard  A♥
+```
+
+No safe card exists. Take the trick as cheaply as possible: the king still leaves a player
+behind us able to overtake with the ace, and keeps our own ace for a hopeless trick later.
+
+**7. Leading, with a trump in hand.**
+
+```
+hand   A♥ 7♠ 8♦     table  (leads)              trump  ♠
+    LowRisk  8♦      Ducking  8♦      FirstCard  A♥
+```
+
+Nothing is safe when leading, so lead the least dangerous card. Note the ordering: the
+**seven** of trumps is considered more dangerous than the **ace** of hearts, because a low
+trump takes tricks its rank alone would never justify.
+
+### Where the two low-risk strategies part company
+
+The same position, changing only what `LowRiskStrategy` still owes:
+
+```
+hand   J♥ 9♥        table  10♥       winning  10♥
+
+  bid 1, won 0  ->  LowRisk  J♥      Ducking  9♥
+  bid 1, won 1  ->  LowRisk  9♥      Ducking  9♥
+```
+
+While it still owes a trick, LowRisk takes this one with the jack. Once the bid is paid it
+ducks exactly like the ducker. `DuckingStrategy` never switches.
+
+### Bidding
+
+```
+hand                    trump  barred   LowRisk  Ducking  FirstCard
+7♥ 8♦ 9♣                  ♠      -          0        0        0
+7♥ 8♦ 9♣                  ♠      0          1        1        1
+A♥ 8♦ 9♣                  ♠      -          1        0        0
+A♥ A♦ K♠                  ♠      -          3        0        0
+A♥ A♦ K♠                  ♠      3          2        0        0
+7♠ 8♠ 9♠ 10♠ J♠           ♠      -          3        0        0
+A♥ K♣ 9♥                 none    -          1        0        0
+```
+
+Row 4 counts two aces plus the trump king. Row 5 is the same hand with 3 barred, stepping
+**down** to 2. Row 6 is five small trumps and no honours at all — `5 - 2 = 3`, because the
+tail of a long trump holding wins by force once everyone else is out. Row 7 is a no-trump
+round, where only the ace counts.
+
+### A full hand
+
+One `LowRiskStrategy` seat through a complete 7-card round, trump ♦, played against the
+other three strategies. It bid **1** — one ace outside trump, no trump honours, no length —
+and made exactly 1.
+
+```
+hand   10♠ 8♥ 8♠ 9♦ 9♥ 9♠ A♥        trump ♦        bids 1
+
+trick 1   table  7♣ J♣ A♣     winning A♣    owes yes   plays 9♦
+trick 2   table  (leads)                    owes no    plays 8♥
+trick 3   table  Q♠ J♠        winning Q♠    owes no    plays 10♠
+trick 4   table  8♣ 9♣ 10♣    winning 10♣   owes no    plays A♥
+trick 5   table  8♦           winning 8♦    owes no    plays 9♥
+trick 6   table  J♥ 7♠ 10♥    winning J♥    owes no    plays 9♠
+trick 7   table  K♣ A♠ K♦     winning K♦    owes no    plays 8♠
+```
+
+- **Trick 1** — void in clubs and holding a trump, so the rules force the 9♦, which trumps
+  the ace of clubs and takes the trick. The bid is paid on the very first trick, by
+  accident rather than design, and the bot spends the rest of the round ducking.
+- **Trick 2** — leading with no trumps left. Leads its lowest.
+- **Trick 3** — must follow spades. The queen is winning, so the 10♠ is safe: dump the
+  highest spade that cannot win.
+- **Trick 4** — the payoff. Void in clubs, no trumps left, so this is a free discard and
+  *nothing* can win. The ace of hearts, the most dangerous card in the hand, goes for free.
+- **Tricks 5–6** — more free discards, shedding 9♥ then 9♠ in danger order.
+- **Trick 7** — one card left, no decision.
+
+Note what did **not** happen: the ace of hearts was never led, never played into a trick it
+could win, and never got stranded as the last card. That is the entire strategy in one hand.
 
 ---
 
