@@ -375,10 +375,65 @@ are untouched.
 
 ---
 
-## 4. Phases
+## 4. Two repos, one refactor
+
+**This plan lives in the engine repo, but it cannot be executed in the engine repo alone.**
+
+`romanian_whist_terminal` consumes this engine as a git submodule at `libs/RomanianWhistEngine`
+(`https://github.com/conectionist/romanian_whist_engine.git`). It is currently the *only*
+consumer, and it is also the only end-to-end check that the game still plays. Most phases here
+change the engine's public API, so the terminal client stops compiling the moment they land.
+
+### Which phases touch the terminal client
+
+| Phase | Terminal work | Files |
+|---|---|---|
+| 0 — testability | **None.** Source-compatible: `Deck` is not reachable from `GameEngine`'s public API, and giving the enums an underlying type does not change `static_cast<int>` comparisons or `switch` statements. | — |
+| 1 — seats | Mechanical but broad | `TerminalRomanianWhist.cpp` (every iterator use, `seatOf`), `GameView.cpp` (`hasBet`/`getBet` by name → by seat) |
+| 2 — engine owns the loop | **Substantial rewrite** | `TerminalRomanianWhist.{h,cpp}` becomes observer callbacks; `GameView.cpp` loses `openingSeat`; `Pacer` calls move into the callbacks |
+| 3 — setup | Small | `applySetup()` → builds a `GameSetup`; `Renderer::drawGameOver` takes `std::vector<Standing>` |
+| 4 — cards by value | Moderate | `ConsoleMoveProvider.cpp` (`layOutHand`, index-returning `playCard`), `CardFormat.{h,cpp}`, `GameView.cpp` |
+| 5 — Forehead/Hidden | Small but visible | `ConsoleMoveProvider` (blind bid prompt), `Renderer`/`GameView` (whether other seats' cards are shown) |
+| 6 — release | Submodule pin, README | — |
+
+### How to sequence the commits
+
+**A phase is not done when the engine compiles. It is done when the terminal plays a full game.**
+The migration of the client is *part of* each phase, not a follow-up to it.
+
+Recommended workflow — a long-lived `engine-v4` branch in the engine repo that the terminal's
+submodule tracks for the duration:
+
+```bash
+# engine repo: do the phase on the shared v4 branch
+cd RomanianWhist && git checkout engine-v4
+# ... implement the phase, ctest green ...
+git commit && git push origin engine-v4
+
+# terminal repo: point the submodule at it, migrate, verify by actually playing
+cd ../romanian_whist_terminal/libs/RomanianWhistEngine
+git fetch && git checkout engine-v4 && git pull
+cd ../.. && cmake --build build && ./build/terminal_romanian_whist
+# ... migrate the client until it plays a full game ...
+git add libs/RomanianWhistEngine src/ && git commit    # submodule SHA moves with the client
+```
+
+Only at Phase 6 does `engine-v4` merge to `master` and the submodule pin move to a master SHA.
+
+> **Do not merge an engine phase to `master` before the matching terminal migration is written
+> and verified.** Doing so leaves `master` in a state where the engine's only consumer does not
+> build, and the refactor loses the one thing that proves it still works.
+
+The planned web backend does not exist yet, so there is nothing to coordinate there — but it
+should be built against v4 rather than against v3 with the pointer and ordering hazards worked
+around. Starting it before Phase 3 lands means writing code twice.
+
+---
+
+## 5. Phases
 
 Each phase ends with the full test suite green and the terminal client playable. **Do not
-proceed to the next phase until both hold.**
+proceed to the next phase until both hold** — see §4 for what "playable" requires.
 
 ### Phase 0 — Make the engine testable, then pin its behaviour
 
@@ -694,11 +749,12 @@ Closes the gap `IMPLEMENTATION_PLAN.md` records.
 3. Document the one-thread-per-engine rule explicitly. **Do not add internal locking.**
 4. `IMPLEMENTATION_PLAN.md`: mark the round-type and test gaps closed.
 5. Version to **4.0.0**. Every change here is breaking.
-6. Update the terminal client's submodule pin and its README.
+6. Merge `engine-v4` to `master` and move the terminal client's submodule pin onto a master SHA
+   (§4). Update its README.
 
 ---
 
-## 5. Risks
+## 6. Risks
 
 **Inversion of control.** Clients no longer drive. In practice this is mild — observers are
 called synchronously on the same thread, so a breakpoint in `onCardPlayed` behaves exactly like
@@ -710,6 +766,10 @@ documented, and a future web backend's observer must not block on network I/O.
 **The terminal client is the only end-to-end check for pacing and rendering.** The golden tests
 cover rules, not presentation. Play a full game by hand at the end of Phases 2 and 5.
 
+**The refactor spans two repositories** and the client cannot build against a partially migrated
+engine — see §4. The most likely way to get into trouble here is landing an engine phase on
+`master` before the terminal migration that goes with it, which strands the only consumer.
+
 **Phase 4 is a wide, shallow change** touching every strategy and both move providers. It is
 also the only phase with a hard guarantee attached: scores must not move at all. If they do,
 something in the port is wrong.
@@ -720,7 +780,7 @@ refactor, and could ship separately.
 
 ---
 
-## 6. Order of work, condensed
+## 7. Order of work, condensed
 
 ```
 0. 2-byte Card -> seedable shuffle -> tests -> golden full-game tests        [no behaviour change]
@@ -737,7 +797,7 @@ and only in Forehead and Hidden rounds.
 
 ---
 
-## 7. Reference files
+## 8. Reference files
 
 - `src/GameEngine.cpp` — the primitives being consolidated; `getForbiddenBet()` (lines 96-124)
   explains the `setBet`/`setResult` coupling that Phase 1 removes.
