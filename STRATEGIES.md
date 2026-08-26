@@ -4,6 +4,13 @@ The engine ships four `IStrategy` implementations. This document covers what eac
 does, how they compare, and where they fall down. For the interface itself, see
 [README.md](README.md#connecting-your-interface).
 
+> **Describes v3.** The strategies' *reasoning* is unaffected by
+> [ENGINE_V4_PLAN.md](ENGINE_V4_PLAN.md), but two mechanical details in
+> [Writing your own](#writing-your-own) change: v4 phase 4 passes cards by value, so a strategy
+> returns `std::optional<Card>` rather than a `Card*` from `context.hand`, and phase 5 may hand
+> a strategy an **empty** hand in Forehead and Hidden rounds, where `context.handSize` — not
+> `hand.size()` — is the legal bid range.
+
 | Strategy | Header | Bids | Plays |
 |---|---|---|---|
 | [`RandomCardStrategy`](#randomcardstrategy) | `strategies/RandomCardStrategy.h` | A random legal number | A random legal card |
@@ -370,8 +377,13 @@ Three things to get right:
 
 1. **Return a pointer from `context.hand`,** never a copy. `Player::playCard` removes the
    played card by identity.
+   *(v4 phase 4 removes this rule entirely — cards are passed by value and you return
+   `std::optional<Card>`. It is the subtlest rule here and the reason the phase exists.)*
 2. **Handle `trump == nullptr`.** The 8-card rounds have no trump.
+   *(v4 phase 4: `std::optional<Card>`, so check `has_value()`.)*
 3. **Guard the empty case** and return `nullptr`, which callers may treat as an error.
+   *(v4 phase 4: `std::nullopt`. Note that from phase 5 an empty hand is also a normal state
+   during bidding in Forehead and Hidden rounds — see the note at the top.)*
 
 Both `getBestBet` and `getBestChoice` are pure functions of their arguments, so a
 deterministic strategy can be tested without standing up a `GameEngine` at all.

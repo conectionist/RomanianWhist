@@ -1,5 +1,11 @@
 # Romanian Whist Implementation Plan
 
+> **Partly superseded by [ENGINE_V4_PLAN.md](ENGINE_V4_PLAN.md).** The rule decisions below still
+> stand and are the authority on how the game is played. The architecture notes and the remaining
+> gaps do not: v4 moves the game loop out of the client and into the engine, which is what finally
+> makes the round types enforceable and the loop testable. Read this document for *what the rules
+> are*, and the v4 plan for *where the code is going*.
+
 ## Goal
 
 Turn the current terminal prototype into a playable Romanian Whist game with clear rules, reliable game state, scoring, and a terminal UI that can run a full match from setup to final standings.
@@ -21,11 +27,16 @@ The game already runs end-to-end in AI-vs-AI mode. The following are fully imple
 - Trick winner logic: highest trump wins; otherwise highest lead-suit card wins.
 - Scoring: `5 + bid` on exact, `-abs(bid - actual)` on miss, streak bonuses/penalties at 5 consecutive wins/losses (excluding 1-card rounds).
 
-Remaining gaps:
+Remaining gaps (all three are addressed by [ENGINE_V4_PLAN.md](ENGINE_V4_PLAN.md)):
 
 - `initialize()` is disabled; the game starts with a hardcoded test setup.
+  — v4 phase 3 replaces setup entirely with a validated `GameEngine::start(GameSetup)`.
 - `RoundType::Forehead` and `RoundType::Hidden` are stored in the schedule but the UI ignores them.
+  — this cannot be fixed while the *client* builds the bidding prompt; v4 phase 5 enforces it in
+  the engine once the engine owns the loop.
 - No automated tests.
+  — v4 phase 0 adds the test target, unit tests and golden full-game tests, and is a prerequisite
+  for every phase after it.
 
 ## Rule Decisions (All Confirmed)
 
