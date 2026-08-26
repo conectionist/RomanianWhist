@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(RomanianWhistEngine
-    VERSION 2.0.0
+    VERSION 3.0.0
     DESCRIPTION "Reusable Romanian Whist game engine"
     LANGUAGES CXX)
 
@@ -18,6 +18,9 @@ add_library(romanian_whist_engine STATIC
     src/AiMoveProvider.cpp
     src/strategies/FirstCardStrategy.cpp
     src/strategies/RandomCardStrategy.cpp
+    src/strategies/TrickHeuristics.cpp
+    src/strategies/LowRiskStrategy.cpp
+    src/strategies/DuckingStrategy.cpp
 )
 
 # Consumers link against this alias, so the name is identical whether the engine

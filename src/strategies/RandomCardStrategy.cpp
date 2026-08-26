@@ -28,9 +28,11 @@ unsigned int RandomCardStrategy::getBestBet(const BetContext &context)
     return bet;
 }
 
-Card *RandomCardStrategy::getBestChoice(const std::vector<Card *> &hand, Card *trump, const Suit *leadSuit)
+Card *RandomCardStrategy::getBestChoice(const PlayContext &context)
 {
-    std::vector<Card*> legalCards = cardValidator.getLegalCards(hand, trump, leadSuit);
+    std::vector<Card*> legalCards = cardValidator.getLegalCards(context.hand,
+                                                                context.trump,
+                                                                context.leadSuit);
 
     if (legalCards.empty())
         return nullptr;

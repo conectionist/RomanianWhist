@@ -1,5 +1,7 @@
 #include <romanian_whist/GameEngine.h>
 
+#include <romanian_whist/CardValidator.h>
+
 #include <utility>
 
 namespace romanian_whist
@@ -240,28 +242,10 @@ RoundType GameEngine::getCurrentRoundType() const
 
 bool GameEngine::cardBeats(const Card& candidate, const Card& currentBest, Suit leadSuit)
 {
-    const Card* trump = getCurrentTrumpCard();
-    const bool candidateIsTrump = trump && candidate.suit == trump->suit;
-    const bool bestIsTrump = trump && currentBest.suit == trump->suit;
-
-    if(candidateIsTrump || bestIsTrump)
-    {
-        if(candidateIsTrump != bestIsTrump)
-            return candidateIsTrump;
-
-        return static_cast<int>(candidate.rank) > static_cast<int>(currentBest.rank);
-    }
-
-    const bool candidateIsLead = candidate.suit == leadSuit;
-    const bool bestIsLead = currentBest.suit == leadSuit;
-
-    if(candidateIsLead != bestIsLead)
-        return candidateIsLead;
-
-    if(candidateIsLead)
-        return static_cast<int>(candidate.rank) > static_cast<int>(currentBest.rank);
-
-    return false;
+    // The ranking itself lives on CardValidator, so that a strategy weighing up
+    // "would this card win?" reasons with the very rule that will later declare
+    // the winner, and the two can never drift apart.
+    return CardValidator::beats(candidate, currentBest, leadSuit, getCurrentTrumpCard());
 }
 
 } // namespace romanian_whist
