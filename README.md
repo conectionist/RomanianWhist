@@ -337,6 +337,9 @@ re-deriving "is this card safe to play?" for your own strategy.
 Write your own by implementing `IStrategy` from
 `<romanian_whist/strategies/IStrategy.h>`.
 
+See **[STRATEGIES.md](STRATEGIES.md)** for how each one decides, how they score against
+each other, and where they fall down.
+
 ---
 
 ## Layout
