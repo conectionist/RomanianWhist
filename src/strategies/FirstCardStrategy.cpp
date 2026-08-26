@@ -11,9 +11,14 @@ unsigned int FirstCardStrategy::getBestBet(const BetContext &context)
     return context.forbiddenBet == 0u ? 1u : 0u;
 }
 
-Card *FirstCardStrategy::getBestChoice(const std::vector<Card *> &hand, Card *trump, const Suit *leadSuit)
+Card *FirstCardStrategy::getBestChoice(const PlayContext &context)
 {
-    std::vector<Card*> legalCards = cardValidator.getLegalCards(hand, trump, leadSuit);
+    std::vector<Card*> legalCards = cardValidator.getLegalCards(context.hand,
+                                                                context.trump,
+                                                                context.leadSuit);
+
+    if(legalCards.empty())
+        return nullptr;
 
     return legalCards[0];
 }

@@ -107,11 +107,9 @@ public:
     // How many tricks does this player bet they will win?
     virtual unsigned int makeBet(const BetContext& context) = 0;
 
-    // Which card does this player play? Return one of the pointers from `hand`;
-    // the engine removes it for you.
-    virtual Card* playCard(const std::vector<Card*>& hand,
-                           Card* trump,
-                           const Suit* leadSuit) = 0;
+    // Which card does this player play? Return one of the pointers from
+    // `context.hand`; the engine removes it for you.
+    virtual Card* playCard(const PlayContext& context) = 0;
 };
 
 }
@@ -128,6 +126,25 @@ struct BetContext
     std::optional<unsigned int> forbiddenBet;    // see below
 };
 ```
+
+`PlayContext` does the same for the card decision:
+
+```cpp
+struct PlayContext
+{
+    const std::vector<Card*>& hand;
+    const std::vector<Card*>& playedCards;       // this trick, in play order
+    Card* trump = nullptr;                       // null in 8-card rounds
+    const Suit* leadSuit = nullptr;              // null when leading
+    unsigned int bet = 0;                        // this player's bid this round
+    unsigned int tricksWon = 0;                  // of it, so far
+};
+```
+
+`playedCards` is what makes it possible to ask whether a card would actually win:
+pass it to `CardValidator::getWinningCard`, then `CardValidator::beats`. A card that
+does not beat the current winner cannot take the trick however many players are
+still to go, since they can only push the winner higher.
 
 `forbiddenBet` is the bidding restriction: the final bidder may not make the
 round's bids add up to exactly the trick count. It is set only for that bidder,
@@ -150,13 +167,11 @@ public:
         return askUserForBet(context);
     }
 
-    romanian_whist::Card* playCard(const std::vector<romanian_whist::Card*>& hand,
-                                   romanian_whist::Card* trump,
-                                   const romanian_whist::Suit* leadSuit) override
+    romanian_whist::Card* playCard(const romanian_whist::PlayContext& context) override
     {
         // getLegalCards applies the rules of the game for you.
         romanian_whist::CardValidator validator;
-        auto legal = validator.getLegalCards(hand, trump, leadSuit);
+        auto legal = validator.getLegalCards(context.hand, context.trump, context.leadSuit);
 
         // Return nullptr if `legal` is empty - the built-in strategies do.
         return askUserToPick(legal);
@@ -312,6 +327,12 @@ call it. A legal bid is one in `[0, getCurrentRoundTrickCount()]` that is not
 |---|---|
 | `RandomCardStrategy` | Plays a random legal card; bids a random legal number of tricks |
 | `FirstCardStrategy` | Plays the first legal card; bids 0, or 1 when 0 is barred |
+| `LowRiskStrategy` | Bids the tricks its hand will take whether it wants them or not — usually 0 — then plays to that bid: takes tricks as cheaply as it can while it still owes some, and ducks every trick after that |
+| `DuckingStrategy` | Bids 0 come what may and never chases a trick, dumping its highest cards at the moments they cannot win |
+
+The two low-risk strategies share their judgement calls through
+`<romanian_whist/strategies/TrickHeuristics.h>`, which is public — reuse it rather than
+re-deriving "is this card safe to play?" for your own strategy.
 
 Write your own by implementing `IStrategy` from
 `<romanian_whist/strategies/IStrategy.h>`.
@@ -325,7 +346,8 @@ include/romanian_whist/     public headers — this is the include root
 ├── GameEngine.h            main facade
 ├── IMoveProvider.h         implement this to supply a UI
 ├── BetContext.h            what IMoveProvider::makeBet is handed
-├── CardValidator.h         legal-move rules
+├── PlayContext.h           what IMoveProvider::playCard is handed
+├── CardValidator.h         legal-move rules and the trick ranking
 ├── AiMoveProvider.h        AI player driven by an IStrategy
 └── strategies/             IStrategy + the bundled strategies
 src/                        implementation

@@ -34,9 +34,13 @@ const std::vector<Card*>& Player::getHand() const
     return hand;
 }
 
-Card* Player::playCard(Card* trump, const Suit* leadSuit)
+Card* Player::playCard(Card* trump,
+                       const Suit* leadSuit,
+                       const std::vector<Card*>& playedCards,
+                       unsigned int bet,
+                       unsigned int tricksWon)
 {
-    Card* card = moveProvider->playCard(hand, trump, leadSuit);
+    Card* card = moveProvider->playCard(PlayContext{hand, playedCards, trump, leadSuit, bet, tricksWon});
     if(card != nullptr)
         hand.erase(std::remove(hand.begin(), hand.end(), card), hand.end());
     return card;

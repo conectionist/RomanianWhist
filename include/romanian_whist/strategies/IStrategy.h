@@ -4,6 +4,7 @@
 #include <romanian_whist/BetContext.h>
 #include <romanian_whist/Card.h>
 #include <romanian_whist/CardValidator.h>
+#include <romanian_whist/PlayContext.h>
 
 #include <vector>
 
@@ -17,7 +18,7 @@ protected:
 public:
     virtual ~IStrategy() = default;
     virtual unsigned int getBestBet(const BetContext& context) = 0;
-    virtual Card* getBestChoice(const std::vector<Card*>& hand, Card* trump, const Suit* leadSuit) = 0;
+    virtual Card* getBestChoice(const PlayContext& context) = 0;
 };
 
 } // namespace romanian_whist

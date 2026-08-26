@@ -28,7 +28,14 @@ public:
     void addCardToHand(Card* card);
     void clearHand();
     const std::vector<Card*>& getHand() const;
-    Card* playCard(Card* trump, const Suit* leadSuit);
+    // As with getBet(), the hand is the player's own, so only the rest of the
+    // context is passed in. `bet` and `tricksWon` come from the current Round.
+    Card* playCard(Card* trump,
+                   const Suit* leadSuit,
+                   const std::vector<Card*>& playedCards,
+                   unsigned int bet,
+                   unsigned int tricksWon);
+
     // The hand is the player's own, so only the rest of the bidding context is
     // passed in. `forbiddenBet` comes from GameEngine::getForbiddenBet().
     unsigned int getBet(Card* trump,

@@ -10,9 +10,9 @@ unsigned int AiMoveProvider::makeBet(const BetContext &context)
     return strategy->getBestBet(context);
 }
 
-Card *AiMoveProvider::playCard(const std::vector<Card *> &hand, Card *trump, const Suit *leadSuit)
+Card *AiMoveProvider::playCard(const PlayContext &context)
 {
-    return strategy->getBestChoice(hand, trump, leadSuit);
+    return strategy->getBestChoice(context);
 }
 
 } // namespace romanian_whist
