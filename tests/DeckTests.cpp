@@ -1,10 +1,17 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "GameHarness.h"
+
+#include <romanian_whist/AiMoveProvider.h>
 #include <romanian_whist/Deck.h>
+#include <romanian_whist/strategies/DuckingStrategy.h>
+#include <romanian_whist/strategies/FirstCardStrategy.h>
+#include <romanian_whist/strategies/LowRiskStrategy.h>
 
 #include <random>
 
 using namespace romanian_whist;
+using namespace romanian_whist::test;
 
 TEST_CASE("Deck exposes size and const iteration", "[deck]")
 {
@@ -63,4 +70,34 @@ TEST_CASE("Deck::shuffle is a portable, seeded Fisher-Yates", "[deck]")
         orderAgain.push_back(card.rank);
 
     REQUIRE(order == orderAgain);
+}
+
+TEST_CASE("Two engines given the same seed play an identical game", "[deck]")
+{
+    // Determinism at the deck level (above) doesn't by itself prove the
+    // engine as a whole is a pure function of its seed - dealing, bidding
+    // and trick play all sit between the shuffle and the final scores.
+    constexpr std::uint32_t seed = 777;
+
+    auto buildProviders = []
+    {
+        std::vector<std::unique_ptr<IMoveProvider>> providers;
+        providers.push_back(std::make_unique<AiMoveProvider>(std::make_unique<FirstCardStrategy>()));
+        providers.push_back(std::make_unique<AiMoveProvider>(std::make_unique<LowRiskStrategy>()));
+        providers.push_back(std::make_unique<AiMoveProvider>(std::make_unique<DuckingStrategy>()));
+        return providers;
+    };
+
+    RoundRecord recordA;
+    GameHooks hooksA;
+    hooksA.onRoundScored = recordRoundsInto(recordA);
+    GameEngine engineA = playFullGame(GameStructure::S_181, buildProviders(), seed, hooksA);
+
+    RoundRecord recordB;
+    GameHooks hooksB;
+    hooksB.onRoundScored = recordRoundsInto(recordB);
+    GameEngine engineB = playFullGame(GameStructure::S_181, buildProviders(), seed, hooksB);
+
+    REQUIRE(finalScores(engineA) == finalScores(engineB));
+    REQUIRE(recordA == recordB);
 }

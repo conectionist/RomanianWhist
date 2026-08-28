@@ -1,9 +1,13 @@
 #include <romanian_whist/detail/RandomDraw.h>
 
+#include <cassert>
+
 namespace romanian_whist::detail
 {
 unsigned int uniformIndex(std::mt19937& generator, unsigned int exclusiveUpperBound)
 {
+    assert(exclusiveUpperBound > 0 && "uniformIndex: exclusiveUpperBound must be > 0");
+
     using ResultType = std::mt19937::result_type;
 
     const ResultType range = exclusiveUpperBound;

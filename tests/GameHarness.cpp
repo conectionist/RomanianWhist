@@ -121,4 +121,21 @@ std::vector<int> finalScores(const GameEngine& engine)
     return scores;
 }
 
+std::function<void(const GameEngine&)> recordRoundsInto(RoundRecord& record)
+{
+    return [&record](const GameEngine& g)
+    {
+        std::vector<std::pair<unsigned int, unsigned int>> row;
+        const auto& players = g.getPlayers();
+
+        for(unsigned int i = 0 ; i < players.size() ; i++)
+        {
+            const std::string& name = players.at(i).getName();
+            row.emplace_back(g.getCurrentRound().getBet(name), g.getCurrentRound().getActual(name));
+        }
+
+        record.push_back(row);
+    };
+}
+
 } // namespace romanian_whist::test

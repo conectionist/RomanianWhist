@@ -58,21 +58,10 @@ TEST_CASE("Golden game: 2 players, S_818", "[golden]")
 
 TEST_CASE("Golden game: 4 players, S_181, with full round record", "[golden]")
 {
-    using RoundRecord = std::vector<std::vector<std::pair<unsigned int, unsigned int>>>;
     RoundRecord record;
 
     GameHooks hooks;
-    hooks.onRoundScored = [&record](const GameEngine& g)
-    {
-        std::vector<std::pair<unsigned int, unsigned int>> row;
-        const auto& players = g.getPlayers();
-        for(unsigned int i = 0 ; i < players.size() ; i++)
-        {
-            const std::string& name = players.at(i).getName();
-            row.emplace_back(g.getCurrentRound().getBet(name), g.getCurrentRound().getActual(name));
-        }
-        record.push_back(row);
-    };
+    hooks.onRoundScored = recordRoundsInto(record);
 
     GameEngine engine = playFullGame(GameStructure::S_181, buildRoundRobinProviders(4), kGoldenSeed, hooks);
 
