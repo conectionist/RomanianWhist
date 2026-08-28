@@ -5,7 +5,9 @@
 #include <romanian_whist/Scoreboard.h>
 #include <romanian_whist/Deck.h>
 
+#include <cstdint>
 #include <optional>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -26,9 +28,16 @@ private:
     Scoreboard scoreboard;
     Deck deck;
     GameStatus status;
+    std::mt19937 generator;
 
 public:
     GameEngine();
+
+    // Seeds the shuffle generator directly, for a reproducible game. Interim
+    // entry point until GameSetup::shuffleSeed exists (Phase 3); every golden
+    // test calls this one until then.
+    explicit GameEngine(std::uint32_t seed);
+
     void addPlayer(const std::string& name, std::unique_ptr<IMoveProvider> moveProvider);
     void initializeScoreboard(const GameStructure& structure, 
                               bool endWithForeheadAndHidden, 
@@ -78,6 +87,10 @@ public:
     // not fully seal off the players behind it.
     const PlayerList& getPlayers() const;
     const Round& getCurrentRound() const;
+
+    // Read-only access to the deck, for inspecting composition and shuffle
+    // order (tests) without a test-only friend declaration.
+    const Deck& getDeck() const;
 
     unsigned int getCurrentRoundIndex() const;
     unsigned int getRoundCount() const;

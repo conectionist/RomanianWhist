@@ -2,11 +2,15 @@
 
 #include <romanian_whist/CardValidator.h>
 
+#include <stdexcept>
 #include <utility>
 
 namespace romanian_whist
 {
-GameEngine::GameEngine() : status(GameStatus::NotStarted)
+GameEngine::GameEngine() : status(GameStatus::NotStarted), generator(std::random_device{}())
+{}
+
+GameEngine::GameEngine(std::uint32_t seed) : status(GameStatus::NotStarted), generator(seed)
 {}
 
 void GameEngine::addPlayer(const std::string &name, std::unique_ptr<IMoveProvider> moveProvider)
@@ -23,6 +27,9 @@ void GameEngine::initializeScoreboard(const GameStructure &structure,
 
 void GameEngine::initializeDeck(unsigned int playerCount)
 {
+    if(playerCount < 2 || playerCount > 6)
+        throw std::invalid_argument("playerCount must be between 2 and 6");
+
     for(int s = 0 ; s < 4 ; s++)
         for(int r = 1 + (6 - playerCount) * 2 ; r < 13 ; r++)
         {
@@ -43,7 +50,7 @@ bool GameEngine::isInProgress() const
 
 void GameEngine::shuffleDeck()
 {
-    deck.shuffle();
+    deck.shuffle(generator);
 }
 
 void GameEngine::dealCards()
@@ -223,6 +230,11 @@ const PlayerList &GameEngine::getPlayers() const
 const Round &GameEngine::getCurrentRound() const
 {
     return scoreboard.getCurrentRound();
+}
+
+const Deck &GameEngine::getDeck() const
+{
+    return deck;
 }
 
 unsigned int GameEngine::getCurrentRoundIndex() const

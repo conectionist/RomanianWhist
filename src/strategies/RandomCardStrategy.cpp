@@ -1,9 +1,15 @@
 #include <romanian_whist/strategies/RandomCardStrategy.h>
 
-#include <random>
+#include <romanian_whist/detail/RandomDraw.h>
 
 namespace romanian_whist
 {
+RandomCardStrategy::RandomCardStrategy() : generator(std::random_device{}())
+{}
+
+RandomCardStrategy::RandomCardStrategy(std::uint32_t seed) : generator(seed)
+{}
+
 unsigned int RandomCardStrategy::getBestBet(const BetContext &context)
 {
     if (context.hand.empty())
@@ -16,11 +22,7 @@ unsigned int RandomCardStrategy::getBestBet(const BetContext &context)
     // picks uniformly among what is left, without rejecting and redrawing.
     const unsigned int choiceCount = context.forbiddenBet ? highest : highest + 1;
 
-    std::random_device rd;
-    std::mt19937 generator(rd());
-    std::uniform_int_distribution<unsigned int> dist(0, choiceCount - 1);
-
-    unsigned int bet = dist(generator);
+    unsigned int bet = detail::uniformIndex(generator, choiceCount);
 
     if (context.forbiddenBet && bet >= *context.forbiddenBet)
         bet++;
@@ -37,11 +39,7 @@ Card *RandomCardStrategy::getBestChoice(const PlayContext &context)
     if (legalCards.empty())
         return nullptr;
 
-    std::random_device rd;
-    std::mt19937 generator(rd());
-    std::uniform_int_distribution<std::size_t> dist(0, legalCards.size() - 1);
-
-    return legalCards[dist(generator)];
+    return legalCards[detail::uniformIndex(generator, static_cast<unsigned int>(legalCards.size()))];
 }
 
 } // namespace romanian_whist

@@ -1,0 +1,47 @@
+#ifndef GAME_HARNESS_H
+#define GAME_HARNESS_H
+
+#include <romanian_whist/Card.h>
+#include <romanian_whist/GameEngine.h>
+#include <romanian_whist/IMoveProvider.h>
+#include <romanian_whist/Scoreboard.h>
+
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <vector>
+
+namespace romanian_whist::test
+{
+struct GameHooks
+{
+    // Fires after a bid is chosen, before placeBet() records it - so a hook
+    // sees the same forbiddenBet() the bid was chosen against.
+    std::function<void(const GameEngine&, unsigned int seat, unsigned int bet)> onBeforeBetPlaced;
+
+    // Fires after a card is chosen. `handBeforePlay` is a snapshot taken
+    // before the move provider was asked, since Player::playCard erases the
+    // chosen card from the hand as part of the same call.
+    std::function<void(const std::vector<Card*>& handBeforePlay, Card* trump,
+                        const Suit* leadSuit, Card* playedCard)> onBeforeCardPlayed;
+
+    // Fires once per round, after calculateScores() and before
+    // completeCurrentRound() advances the index - the window Phase 2's
+    // onRoundScored callback will later occupy.
+    std::function<void(const GameEngine&)> onRoundScored;
+};
+
+// Duplicates TerminalRomanianWhist::loop()/playCurrentRoundTricks(), stripped
+// of every view/renderer/pacer call. `providers.size()` is the player count,
+// one provider per seat in seat order. This is the loop Phase 2 replaces
+// with run().
+GameEngine playFullGame(GameStructure structure,
+                        std::vector<std::unique_ptr<IMoveProvider>> providers,
+                        std::uint32_t seed,
+                        const GameHooks& hooks = {});
+
+std::vector<int> finalScores(const GameEngine& engine);   // seat-ordered totals
+
+} // namespace romanian_whist::test
+
+#endif

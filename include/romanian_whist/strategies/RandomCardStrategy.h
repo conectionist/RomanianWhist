@@ -3,11 +3,20 @@
 
 #include <romanian_whist/strategies/IStrategy.h>
 
+#include <cstdint>
+#include <random>
+
 namespace romanian_whist
 {
 class RandomCardStrategy : public IStrategy
 {
+private:
+    std::mt19937 generator;
+
 public:
+    RandomCardStrategy();
+    explicit RandomCardStrategy(std::uint32_t seed);
+
     unsigned int getBestBet(const BetContext& context) override;
     Card* getBestChoice(const PlayContext& context) override;
 };

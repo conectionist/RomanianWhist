@@ -1,0 +1,262 @@
+#include <catch2/catch_test_macros.hpp>
+
+#include <romanian_whist/AiMoveProvider.h>
+#include <romanian_whist/PlayerList.h>
+#include <romanian_whist/RoundType.h>
+#include <romanian_whist/Scoreboard.h>
+#include <romanian_whist/strategies/FirstCardStrategy.h>
+
+using namespace romanian_whist;
+
+namespace
+{
+std::unique_ptr<IMoveProvider> dummyProvider()
+{
+    return std::make_unique<AiMoveProvider>(std::make_unique<FirstCardStrategy>());
+}
+
+PlayerList buildPlayers(unsigned int count)
+{
+    PlayerList players;
+    for(unsigned int i = 0 ; i < count ; i++)
+        players.addPlayer("P" + std::to_string(i), dummyProvider());
+    return players;
+}
+}
+
+TEST_CASE("Scoreboard round scoring", "[scoreboard]")
+{
+    PlayerList players = buildPlayers(2);
+    Scoreboard scoreboard;
+    scoreboard.initialize(GameStructure::S_181, false, false, players);
+
+    auto a = players.first();
+    auto b = players.next(a);
+
+    Round& round = scoreboard.getCurrentRound();
+    round.setBet(a, 1);
+    round.setResult(a, 1);   // exact hit
+    round.setBet(b, 0);
+    round.setResult(b, 1);   // miss by 1
+
+    scoreboard.calculateScores(players);
+
+    REQUIRE(players.at(0).getCurrentRoundScore() == 5 + 1);
+    REQUIRE(players.at(1).getCurrentRoundScore() == -1);
+}
+
+TEST_CASE("Scoreboard streaks", "[scoreboard]")
+{
+    PlayerList players = buildPlayers(2);
+    Scoreboard scoreboard;
+    scoreboard.initialize(GameStructure::S_181, false, false, players);
+
+    auto a = players.first();
+
+    SECTION("a 1-trick round neither breaks nor extends a streak")
+    {
+        REQUIRE(scoreboard.getCurrentRound().getTrickCount() == 1);
+
+        Round& round = scoreboard.getCurrentRound();
+        round.setBet(a, 0);
+        round.setResult(a, 0);   // exact hit
+
+        scoreboard.calculateScores(players);
+
+        REQUIRE(players.at(0).getCurrentRoundScore() == 5);
+        REQUIRE(players.at(0).getConsecutiveWins() == 0);
+        REQUIRE(players.at(0).getConsecutiveLosses() == 0);
+    }
+
+    SECTION("five consecutive exact hits award +10 on the fifth")
+    {
+        // Skip the two 1-trick rounds this schedule opens with (2 players),
+        // landing on the "2..7" ascending block, which every player count
+        // has exactly six of.
+        scoreboard.incrementCurrentRound();
+        scoreboard.incrementCurrentRound();
+        REQUIRE(scoreboard.getCurrentRound().getTrickCount() == 2);
+
+        int previousTotal = players.at(0).getTotalScore();
+
+        for(int i = 0 ; i < 5 ; i++)
+        {
+            Round& round = scoreboard.getCurrentRound();
+            round.setBet(a, 0);
+            round.setResult(a, 0);   // exact hit every round
+
+            scoreboard.calculateScores(players);
+            scoreboard.commitRoundScores(players);
+
+            const int total = players.at(0).getTotalScore();
+            const int delta = total - previousTotal;
+
+            REQUIRE(delta == (i < 4 ? 5 : 15));   // 5 + bid(0), +10 bonus on the 5th
+
+            previousTotal = total;
+            scoreboard.incrementCurrentRound();
+        }
+
+        REQUIRE(players.at(0).getConsecutiveWins() == 5);
+    }
+
+    SECTION("five consecutive misses subtract 10 on the fifth")
+    {
+        scoreboard.incrementCurrentRound();
+        scoreboard.incrementCurrentRound();
+        REQUIRE(scoreboard.getCurrentRound().getTrickCount() == 2);
+
+        int previousTotal = players.at(0).getTotalScore();
+
+        for(int i = 0 ; i < 5 ; i++)
+        {
+            Round& round = scoreboard.getCurrentRound();
+            round.setBet(a, 0);
+            round.setResult(a, 1);   // miss by 1, every round
+
+            scoreboard.calculateScores(players);
+            scoreboard.commitRoundScores(players);
+
+            const int total = players.at(0).getTotalScore();
+            const int delta = total - previousTotal;
+
+            REQUIRE(delta == (i < 4 ? -1 : -11));   // -1, -10 penalty on the 5th
+
+            previousTotal = total;
+            scoreboard.incrementCurrentRound();
+        }
+
+        REQUIRE(players.at(0).getConsecutiveLosses() == 5);
+    }
+}
+
+namespace
+{
+std::vector<unsigned int> trickCountSchedule(GameStructure structure, unsigned int playerCount,
+                                             bool endWithForeheadAndHidden)
+{
+    PlayerList players = buildPlayers(playerCount);
+    Scoreboard scoreboard;
+    scoreboard.initialize(structure, endWithForeheadAndHidden, false, players);
+
+    std::vector<unsigned int> counts;
+    const unsigned int roundCount = scoreboard.getRoundCount();
+    for(unsigned int i = 0 ; i < roundCount ; i++)
+    {
+        counts.push_back(scoreboard.getCurrentRound().getTrickCount());
+        if(i + 1 < roundCount)
+            scoreboard.incrementCurrentRound();
+    }
+    return counts;
+}
+}
+
+TEST_CASE("Scoreboard schedule shape", "[scoreboard]")
+{
+    SECTION("S_181: 1-block, ascending, 8-block, descending, 1-block")
+    {
+        for(unsigned int n : { 2u, 3u, 5u })
+        {
+            const auto counts = trickCountSchedule(GameStructure::S_181, n, false);
+            REQUIRE(counts.size() == 3 * n + 12);
+
+            std::vector<unsigned int> expected(n, 1);
+            for(unsigned int t = 2 ; t <= 7 ; t++)
+                expected.push_back(t);
+            expected.insert(expected.end(), n, 8);
+            for(unsigned int t = 7 ; t >= 2 ; t--)
+                expected.push_back(t);
+            expected.insert(expected.end(), n, 1);
+
+            REQUIRE(counts == expected);
+        }
+    }
+
+    SECTION("S_818: 8-block, descending, 1-block, ascending, 8-block")
+    {
+        for(unsigned int n : { 2u, 3u, 5u })
+        {
+            const auto counts = trickCountSchedule(GameStructure::S_818, n, false);
+            REQUIRE(counts.size() == 3 * n + 12);
+
+            std::vector<unsigned int> expected(n, 8);
+            for(unsigned int t = 7 ; t >= 2 ; t--)
+                expected.push_back(t);
+            expected.insert(expected.end(), n, 1);
+            for(unsigned int t = 2 ; t <= 7 ; t++)
+                expected.push_back(t);
+            expected.insert(expected.end(), n, 8);
+
+            REQUIRE(counts == expected);
+        }
+    }
+
+    SECTION("endWithForeheadAndHidden appends exactly two more 1-trick rounds")
+    {
+        const auto withoutExtra = trickCountSchedule(GameStructure::S_181, 3u, false);
+        const auto withExtra = trickCountSchedule(GameStructure::S_181, 3u, true);
+
+        REQUIRE(withExtra.size() == withoutExtra.size() + 2);
+        REQUIRE(withExtra[withExtra.size() - 1] == 1);
+        REQUIRE(withExtra[withExtra.size() - 2] == 1);
+    }
+}
+
+TEST_CASE("Scoreboard opening seat advances by one seat per round", "[scoreboard]")
+{
+    const unsigned int n = 3;
+    PlayerList players = buildPlayers(n);
+
+    auto seatOfPlayer = [&players](PlayerList::const_iterator it)
+    {
+        for(unsigned int i = 0 ; i < players.size() ; i++)
+            if(&players.at(i) == &*it)
+                return i;
+        return 0u;
+    };
+
+    Scoreboard scoreboard;
+    scoreboard.initialize(GameStructure::S_181, false, false, players);
+
+    unsigned int expectedSeat = 0;
+    const unsigned int roundCount = scoreboard.getRoundCount();
+    for(unsigned int i = 0 ; i < roundCount ; i++)
+    {
+        REQUIRE(seatOfPlayer(scoreboard.getCurrentRound().getOpeningPlayer()) == expectedSeat);
+        expectedSeat = (expectedSeat + 1) % n;
+        if(i + 1 < roundCount)
+            scoreboard.incrementCurrentRound();
+    }
+}
+
+TEST_CASE("Scoreboard all1GamesAreForehead", "[scoreboard]")
+{
+    const unsigned int n = 3;
+    PlayerList players = buildPlayers(n);
+    Scoreboard scoreboard;
+    scoreboard.initialize(GameStructure::S_181, true, true, players);
+
+    const unsigned int roundCount = scoreboard.getRoundCount();
+    for(unsigned int i = 0 ; i < roundCount ; i++)
+    {
+        const Round& round = scoreboard.getCurrentRound();
+
+        if(round.getTrickCount() == 1)
+        {
+            if(i >= roundCount - 2)
+            {
+                // The two appended rounds keep their own explicit type
+                // regardless of all1GamesAreForehead.
+                REQUIRE((round.getRoundType() == RoundType::Forehead ||
+                         round.getRoundType() == RoundType::Hidden));
+            }
+            else
+            {
+                REQUIRE(round.getRoundType() == RoundType::Forehead);
+            }
+        }
+
+        if(i + 1 < roundCount)
+            scoreboard.incrementCurrentRound();
+    }
+}
