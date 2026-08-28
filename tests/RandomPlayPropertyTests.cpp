@@ -15,8 +15,8 @@ using namespace romanian_whist::test;
 namespace
 {
 // Fixed, committed range - not std::random_device - so a failure reproduces
-// locally with the seed printed via INFO below. See ENGINE_V4_PLAN.md
-// section 0g: breadth across seeds is the point, not which seeds.
+// locally with the seed printed via INFO below. Breadth across seeds is the
+// point here, not which seeds are used.
 constexpr std::uint32_t kPropertySeedCount = 2000;
 }
 

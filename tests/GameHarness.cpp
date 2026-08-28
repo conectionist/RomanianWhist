@@ -41,8 +41,9 @@ GameEngine playFullGame(GameStructure structure,
             currentPlayer = game.getNextPlayer(currentPlayer);
         }
 
-        // Seed every seat's result, exactly as the terminal client does - see
-        // ENGINE_V4_PLAN.md section 2 for why this is (harmlessly) redundant.
+        // Redundant but harmless: Round::getActual() already returns 0 for a
+        // seat with no result recorded yet, so this just makes that explicit
+        // before the trick loop starts writing real values.
         currentPlayer = game.getFirstPlayerOfTheRound();
         for(unsigned int i = 0 ; i < game.getPlayerCount() ; i++)
         {

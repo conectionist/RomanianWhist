@@ -26,15 +26,14 @@ struct GameHooks
                         const Suit* leadSuit, Card* playedCard)> onBeforeCardPlayed;
 
     // Fires once per round, after calculateScores() and before
-    // completeCurrentRound() advances the index - the window Phase 2's
-    // onRoundScored callback will later occupy.
+    // completeCurrentRound() advances the index - while the round's bets and
+    // results are still live and its index hasn't moved yet.
     std::function<void(const GameEngine&)> onRoundScored;
 };
 
 // Duplicates TerminalRomanianWhist::loop()/playCurrentRoundTricks(), stripped
 // of every view/renderer/pacer call. `providers.size()` is the player count,
-// one provider per seat in seat order. This is the loop Phase 2 replaces
-// with run().
+// one provider per seat in seat order.
 GameEngine playFullGame(GameStructure structure,
                         std::vector<std::unique_ptr<IMoveProvider>> providers,
                         std::uint32_t seed,

@@ -33,9 +33,7 @@ private:
 public:
     GameEngine();
 
-    // Seeds the shuffle generator directly, for a reproducible game. Interim
-    // entry point until GameSetup::shuffleSeed exists (Phase 3); every golden
-    // test calls this one until then.
+    // Seeds the shuffle generator directly, for a reproducible game.
     explicit GameEngine(std::uint32_t seed);
 
     void addPlayer(const std::string& name, std::unique_ptr<IMoveProvider> moveProvider);

@@ -17,9 +17,9 @@ constexpr std::uint32_t kGoldenSeed = 42;
 
 // Round-robins the three deterministic strategies across seats, so every
 // scenario exercises all three regardless of player count.
-// RandomCardStrategy is deliberately never used here - see ENGINE_V4_PLAN.md
-// section 0f for why a seeded-but-behaviour-dependent draw count would
-// desync on any change and turn a located failure into noise.
+// RandomCardStrategy is deliberately excluded: its draw count depends on
+// what every other seat bids, so any behavioural change desyncs its stream
+// and turns a located failure into "something changed somewhere" instead.
 std::vector<std::unique_ptr<IMoveProvider>> buildRoundRobinProviders(unsigned int playerCount)
 {
     std::vector<std::unique_ptr<IMoveProvider>> providers;

@@ -41,7 +41,7 @@ struct Card
     std::string toString() const;
 };
 
-static_assert(sizeof(Card) == 2, "Card is passed by value everywhere from Phase 4 on");
+static_assert(sizeof(Card) == 2, "Card is exactly a Rank and a Suit; each fits in a byte");
 
 } // namespace romanian_whist
 

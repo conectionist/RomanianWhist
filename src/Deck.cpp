@@ -13,6 +13,9 @@ void Deck::addCard(Card&& card)
 
 void Deck::shuffle(std::mt19937& generator)
 {
+    if(deck.empty())
+        return;
+
     for(size_type i = deck.size() - 1 ; i > 0 ; i--)
     {
         const size_type j = detail::uniformIndex(generator, static_cast<unsigned int>(i + 1));

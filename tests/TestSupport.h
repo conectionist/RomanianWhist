@@ -7,8 +7,8 @@
 namespace romanian_whist::test
 {
 // By address, not by name: two players may share a name, and list nodes do
-// not move. Mirrors TerminalRomanianWhist::seatOf - Phase 0 has no Seat type
-// yet.
+// not move. Mirrors TerminalRomanianWhist::seatOf, since there is no
+// dedicated Seat type yet.
 inline unsigned int seatOf(const GameEngine& engine, PlayerList::const_iterator player)
 {
     const auto& players = engine.getPlayers();
