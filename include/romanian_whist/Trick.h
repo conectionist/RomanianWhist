@@ -39,9 +39,6 @@ public:
     // eight cards.
     std::vector<Card*> cardsInPlayOrder() const;
 
-    // Null if that seat has not played to this trick yet.
-    const Card* getCardPlayedBy(Seat seat) const;
-
     void setLeadSuit(Suit suit);
 
     // Only meaningful once hasLeadSuit() is true: a trick with no cards played

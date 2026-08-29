@@ -275,3 +275,69 @@ TEST_CASE("GameEngine deck composition", "[game-engine]")
         REQUIRE_FALSE(sawTwo);
     }
 }
+
+TEST_CASE("GameEngine::determineTrickWinner", "[game-engine]")
+{
+    GameEngine engine(1u);
+    addPlayers(engine, 3);
+    engine.initializeScoreboard(GameStructure::S_181, false, false);
+
+    // Land on an 8-trick round, which is the one round type dealt without a
+    // trump - so these rank on lead suit alone, with no trump to complicate
+    // what is being asserted.
+    skipRounds(engine, 9);
+    REQUIRE(engine.getCurrentRoundTrickCount() == 8);
+    REQUIRE(engine.getCurrentTrumpCard() == nullptr);
+
+    Card heartsTwo(Rank::Two, Suit::Hearts);
+    Card heartsKing(Rank::King, Suit::Hearts);
+    Card spadesAce(Rank::Ace, Suit::Spades);
+
+    SECTION("a trick with no cards in it has no winner to name")
+    {
+        Trick empty;
+
+        REQUIRE_THROWS_AS(engine.determineTrickWinner(empty), std::logic_error);
+    }
+
+    SECTION("names the seat that played the winning card, not its position")
+    {
+        // Seats deliberately out of order: the winner is read off the winning
+        // entry, so it cannot be recovered by counting round from the leader.
+        Trick trick;
+        trick.setLeadSuit(Suit::Hearts);
+        trick.addPlayedCard(Seat{2}, &heartsTwo);
+        trick.addPlayedCard(Seat{0}, &heartsKing);
+        trick.addPlayedCard(Seat{1}, &spadesAce);
+
+        REQUIRE(engine.determineTrickWinner(trick) == Seat{0});
+    }
+
+    SECTION("an off-suit card does not win, however high")
+    {
+        Trick trick;
+        trick.setLeadSuit(Suit::Hearts);
+        trick.addPlayedCard(Seat{1}, &heartsTwo);
+        trick.addPlayedCard(Seat{2}, &spadesAce);
+
+        REQUIRE(engine.determineTrickWinner(trick) == Seat{1});
+    }
+
+    SECTION("ranks a partly played trick, which is what the highlight needs")
+    {
+        // A client shows who is currently winning as the cards go down, so this
+        // is asked once per card rather than once per trick.
+        Trick trick;
+        trick.setLeadSuit(Suit::Hearts);
+
+        trick.addPlayedCard(Seat{2}, &heartsTwo);
+        REQUIRE(engine.determineTrickWinner(trick) == Seat{2});
+
+        trick.addPlayedCard(Seat{0}, &heartsKing);
+        REQUIRE(engine.determineTrickWinner(trick) == Seat{0});
+
+        // The last card cannot follow, so the standing winner is unchanged.
+        trick.addPlayedCard(Seat{1}, &spadesAce);
+        REQUIRE(engine.determineTrickWinner(trick) == Seat{0});
+    }
+}

@@ -1168,6 +1168,12 @@ checklist did not account for:
 - **Step 4's "assert the optional is engaged" is a `throw`, not an `assert`.** Phase 0 already
   had to fix a guard that compiled out of a release build (`d93e355`); an `assert` here would
   repeat that. It also broke three existing tests that bid for only one of two seats — see below.
+- **`Trick::getCardPlayedBy(Seat)` was added and then removed again.** Step 6 asks for it, but
+  §3.3's review note lists it as one of two accessors with no caller in this plan and says to
+  leave it out until one exists. It went in, had no caller and no test, and the client migration
+  turned out not to want it either — `GameView` rebuilds its table by iterating
+  `getPlayedCards()`. Deleted; it can come back when a Qt bidding panel or a web payload asks.
+  **Step 6's instruction to add it is superseded by §3.3.**
 - **Step 8's "three call sites" in the terminal is four.** `GameView.cpp:50`'s
   `round.hasBet(seat.name)` goes with the others, folding into `getBet(seat).has_value()`.
   §4's table had this right; the step list did not.
@@ -1186,6 +1192,13 @@ Test fallout the phase description treats as mechanical but is not:
 - `GameEngineTests`' `"setResult before any bet does not corrupt getForbiddenBet"` section was
   deleted: bets and results no longer share storage, so there is nothing left to corrupt.
 - `tests/TestSupport.h` is gone — it existed only to provide `seatOf()`.
+- `tests/TrickTests.cpp` is new. `Trick` gained real logic this phase and had no direct
+  coverage: the goldens exercise `cardsInPlayOrder()` only incidentally, and **reversing its
+  play order leaves all seven golden games passing** — no golden asserts mid-trick state, and
+  the bundled strategies read the trick as a set. `determineTrickWinner`'s empty-trick throw and
+  its partly-played ranking (what the terminal's `markCurrentlyWinning` needs) are pinned in
+  `GameEngineTests` for the same reason: mutating it to name the winner by position rather than
+  by seat fails the goldens too, but only the targeted test says where.
 
 #### What review found after the phase landed
 

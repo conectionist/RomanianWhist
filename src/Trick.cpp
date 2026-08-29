@@ -33,17 +33,6 @@ std::vector<Card*> Trick::cardsInPlayOrder() const
     return cards;
 }
 
-const Card* Trick::getCardPlayedBy(Seat seat) const
-{
-    for(const PlayedCard& played : playedCards)
-    {
-        if(played.seat == seat)
-            return played.card;
-    }
-
-    return nullptr;
-}
-
 void Trick::setLeadSuit(Suit suit)
 {
     leadSuit = suit;
