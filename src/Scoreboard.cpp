@@ -17,7 +17,7 @@ void Scoreboard::initialize(const GameStructure &structure,
                             bool all1GamesAreForehead, 
                             PlayerList &players)
 {
-    Seat opener = 0;
+    Seat opener{0};
 
     std::vector<unsigned int> gameNumbers;
 
@@ -119,9 +119,10 @@ void Scoreboard::calculateScores(PlayerList& players)
 {
     Round& currentRound = getCurrentRound();
     
-    for(Seat seat = 0 ; seat < players.size() ; seat++)
+    for(unsigned int i = 0 ; i < players.size() ; i++)
     {
-        Player& player = players.at(seat);
+        const Seat seat{i};
+        Player& player = players.at(seat.index);
 
         // Scoring only ever runs once betting is complete, so a seat with no
         // bid means the loop skipped a bidder. Scoring that as a bid of zero

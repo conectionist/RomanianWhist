@@ -17,15 +17,26 @@ Round::Round(unsigned int _trickCount,
 
 void Round::addTrick(const Trick &trick)
 {
+    // Tricks won are counted off the winners stored here, so a trick with no
+    // winner - or one naming a seat that is not at this table - would not be
+    // scored to anybody, and the round would quietly come up short. Reject it
+    // where it enters rather than let calculateScores() report a 0 that looks
+    // like a real result.
+    if(!trick.hasWinner())
+        throw std::logic_error("Round::addTrick: trick has no winner");
+
+    if(trick.getWinner().index >= bets.size())
+        throw std::out_of_range("Round::addTrick: winning seat out of range");
+
     tricks.push_back(trick);
 }
 
 void Round::setBet(Seat seat, unsigned int guess)
 {
-    if(seat >= bets.size())
+    if(seat.index >= bets.size())
         throw std::out_of_range("Round::setBet: seat out of range");
 
-    bets[seat] = guess;
+    bets[seat.index] = guess;
 }
 
 void Round::setTrumpCard(Card *card)
@@ -80,15 +91,15 @@ std::size_t Round::getPlayedTrickCount() const
 
 std::optional<unsigned int> Round::getBet(Seat seat) const
 {
-    if(seat >= bets.size())
+    if(seat.index >= bets.size())
         throw std::out_of_range("Round::getBet: seat out of range");
 
-    return bets[seat];
+    return bets[seat.index];
 }
 
 unsigned int Round::getTricksWon(Seat seat) const
 {
-    if(seat >= bets.size())
+    if(seat.index >= bets.size())
         throw std::out_of_range("Round::getTricksWon: seat out of range");
 
     unsigned int won = 0;

@@ -148,8 +148,28 @@ crossing it do not.
 
 ```cpp
 // include/romanian_whist/Seat.h
-namespace romanian_whist { using Seat = unsigned int; }
+namespace romanian_whist
+{
+struct Seat
+{
+    unsigned int index;
+
+    explicit constexpr Seat(unsigned int _index) : index(_index) {}
+};
+
+constexpr bool operator==(Seat left, Seat right);
+constexpr bool operator!=(Seat left, Seat right);
+}
 ```
+
+**A struct, not `using Seat = unsigned int`.** A seat is always passed next to a count that looks
+identical to it — `placeBet(Seat, unsigned int bet)`, `Round(unsigned int trickCount, Seat opener,
+unsigned int seatCount)` — and with an alias every swapped call still compiles. The iterator this
+replaces made those a compile error, and an alias would quietly give that back at exactly the
+moment the client's call sites are being rewritten. `index` is public because a seat *is* an
+index: it keys `Round::bets` and `PlayerList`, so `bets[seat.index]` says what an accessor would,
+only shorter. Loops over the table read `for(unsigned int i = 0 ; i < count ; i++) { Seat seat{i};
+… }`.
 
 Iterators become an internal detail of `PlayerList`. This deletes `seatOf()` from every client,
 and lets `Round.h` and `Trick.h` stop including `PlayerList.h` entirely — a real decoupling, since
@@ -774,7 +794,7 @@ change the engine's public API, so the terminal client stops compiling the momen
 | Phase | Terminal work | Files |
 |---|---|---|
 | 0 — testability | **One narrow exception, otherwise none as planned.** `SetupWizard`'s custom-setup path let a spectator pick "1 bot" (no human seat), which `initializeDeck`'s new player-count guards turned from a degenerate game into a thrown exception; fixed by raising the minimum to 2 bots when spectating. Nothing else needed to change for the terminal to build and play. | `SetupWizard.cpp`, `engine-v4` branch, commit `949fee0` |
-| 1 — seats | Mechanical but broad. **Engine done, this outstanding** — the client does not currently build against the engine | `TerminalRomanianWhist.cpp` (every iterator use, `seatOf`, both `setResult` call sites; `Player` access goes through `GameEngine::getPlayer(Seat)`; `trick.getPlayedCards()` → `trick.cardsInPlayOrder()` where a flat card list is wanted), `GameView.cpp` (`hasBet`/`getBet` by name → by seat, `getActual` → `getTricksWon`) |
+| 1 — seats | Mechanical but broad. **Engine done, this outstanding** — the client does not currently build against the engine. `Seat` is a struct with an explicit constructor (§3.1), so a seat built from a loop index is `Seat{i}` and an index taken from a seat is `seat.index` | `TerminalRomanianWhist.cpp` (every iterator use, `seatOf`, both `setResult` call sites; `Player` access goes through `GameEngine::getPlayer(Seat)`; `trick.getPlayedCards()` → `trick.cardsInPlayOrder()` where a flat card list is wanted), `GameView.cpp` (`hasBet`/`getBet` by name → by seat, `getActual` → `getTricksWon`) |
 | 2 — engine owns the loop | **Substantial rewrite** | `TerminalRomanianWhist.{h,cpp}` becomes observer callbacks; `markCurrentlyWinning` switches to `getCurrentTrickLeader()`; `GameView.cpp` loses `openingSeat` and rebuilds `view.table` from `getCurrentTrick()`'s seats; `Pacer` calls move into the callbacks. `startGame()` keeps its v3 setup sequence this phase — §3.7 shows the post-Phase-3 shape, Phase 2 step 9 the interim one |
 | 3 — setup | Small | `applySetup()` → builds a `GameSetup`; `Renderer::drawGameOver` takes `std::vector<Standing>`; the scoreboard rows move off `getPlayerRoundScores()` onto `getRoundScore(Seat)` / `getTotalScore(Seat)` |
 | 4 — cards by value | Moderate | `ConsoleMoveProvider.cpp` (`layOutHand`, index-returning `playCard`), `CardFormat.{h,cpp}`, `GameView.cpp` |
@@ -1166,6 +1186,24 @@ Test fallout the phase description treats as mechanical but is not:
 - `GameEngineTests`' `"setResult before any bet does not corrupt getForbiddenBet"` section was
   deleted: bets and results no longer share storage, so there is nothing left to corrupt.
 - `tests/TestSupport.h` is gone — it existed only to provide `seatOf()`.
+
+#### What review found after the phase landed
+
+Three fixes on top of the above, all with the golden scores still unmoved:
+
+- **`Round::addTrick` accepted a trick with no winner.** Results are derived from stored winners
+  alone, so a caller that added before `setWinner` scored every seat 0 tricks in silence — the
+  half of the model `setBet`'s bounds check and `calculateScores`' missing-bid throw already
+  guarded. It now throws `std::logic_error` on an unwon trick and `std::out_of_range` on a winner
+  off the table. Phase 2's in-engine loop inherits the guard.
+- **The property test's round-scored assertion had been weakened into a tautology.** It was
+  swapped to `getPlayedTrickCount() == getCurrentRoundTrickCount()`, which the harness cannot
+  violate — one trick is added per iteration. Summing `getTricksWon()` across the seats is *not*
+  a recount, because that method only counts tricks with a winner set: with the sum restored,
+  deleting the harness's `setWinner` fails on seed 0, where the trick-count form passed 1.17M
+  assertions. Both assertions are kept.
+- **`Seat` became a struct** (§3.1), which was the alias's whole reason for existing put back.
+
 
 ---
 

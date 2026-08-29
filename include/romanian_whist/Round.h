@@ -36,6 +36,10 @@ public:
     Round(unsigned int _trickCount, Seat _opener, unsigned int seatCount,
           RoundType _type = RoundType::Normal);
 
+    // The trick must already have its winner set, to a seat at this table:
+    // that winner is the only record of who took it (see getTricksWon()), so
+    // a trick added without one is unscoreable. Throws std::logic_error and
+    // std::out_of_range respectively.
     void addTrick(const Trick& trick);
     void setBet(Seat seat, unsigned int guess);
     void setTrumpCard(Card* card);

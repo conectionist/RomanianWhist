@@ -64,7 +64,7 @@ TEST_CASE("Random play never violates the rules", "[property]")
 
         GameHooks hooks;
 
-        hooks.onBeforeBetPlaced = [&](const GameEngine& engine, unsigned int, unsigned int bet)
+        hooks.onBeforeBetPlaced = [&](const GameEngine& engine, Seat, unsigned int bet)
         {
             REQUIRE(engine.isBetLegal(bet));
         };
@@ -77,12 +77,18 @@ TEST_CASE("Random play never violates the rules", "[property]")
 
         hooks.onRoundScored = [&](const GameEngine& engine)
         {
-            // Every trick is stored with its winner and tricks-won is counted
-            // off that, so summing it across the seats would only recount the
-            // stored tricks. Assert the thing that still has teeth: the round
-            // played out exactly as many tricks as it was dealt for.
-            REQUIRE(engine.getCurrentRound().getPlayedTrickCount() ==
-                    engine.getCurrentRoundTrickCount());
+            // Tricks won is counted off the winner stored on each trick, so
+            // this sum is not a recount: a trick added without its winner set,
+            // or with one naming a seat off the table, is skipped by
+            // getTricksWon() and the total comes up short of the trick count.
+            const Round& round = engine.getCurrentRound();
+            unsigned int totalTricksWon = 0;
+
+            for(unsigned int i = 0 ; i < engine.getPlayerCount() ; i++)
+                totalTricksWon += round.getTricksWon(Seat{i});
+
+            REQUIRE(totalTricksWon == engine.getCurrentRoundTrickCount());
+            REQUIRE(round.getPlayedTrickCount() == engine.getCurrentRoundTrickCount());
         };
 
         playFullGame(structure, std::move(providers), seed, hooks);

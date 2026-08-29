@@ -49,9 +49,9 @@ const Player& PlayerList::operator[](size_type index) const
 Seat PlayerList::nextSeat(Seat seat) const
 {
     if(players.empty())
-        return 0;
+        return Seat{0};
 
-    return static_cast<Seat>((seat + 1) % players.size());
+    return Seat{static_cast<unsigned int>((seat.index + 1) % players.size())};
 }
 
 PlayerList::iterator PlayerList::begin()

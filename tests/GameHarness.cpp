@@ -120,8 +120,9 @@ std::function<void(const GameEngine&)> recordRoundsInto(RoundRecord& record)
         std::vector<std::pair<unsigned int, unsigned int>> row;
         const auto& players = g.getPlayers();
 
-        for(Seat seat = 0 ; seat < players.size() ; seat++)
+        for(unsigned int i = 0 ; i < players.size() ; i++)
         {
+            const Seat seat{i};
             const Round& round = g.getCurrentRound();
             row.emplace_back(round.getBet(seat).value_or(0), round.getTricksWon(seat));
         }

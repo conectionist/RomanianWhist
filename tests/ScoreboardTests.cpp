@@ -7,6 +7,8 @@
 #include <romanian_whist/Scoreboard.h>
 #include <romanian_whist/strategies/FirstCardStrategy.h>
 
+#include <stdexcept>
+
 using namespace romanian_whist;
 
 namespace
@@ -44,8 +46,8 @@ TEST_CASE("Scoreboard round scoring", "[scoreboard]")
     Scoreboard scoreboard;
     scoreboard.initialize(GameStructure::S_181, false, false, players);
 
-    const Seat a = 0;
-    const Seat b = 1;
+    const Seat a{0};
+    const Seat b{1};
 
     // Skip the two 1-trick rounds the 2-player schedule opens with: both seats
     // take a trick here, which only a round of at least two can hold.
@@ -71,8 +73,8 @@ TEST_CASE("Scoreboard streaks", "[scoreboard]")
     Scoreboard scoreboard;
     scoreboard.initialize(GameStructure::S_181, false, false, players);
 
-    const Seat a = 0;
-    const Seat b = 1;
+    const Seat a{0};
+    const Seat b{1};
 
     SECTION("a 1-trick round neither breaks nor extends a streak")
     {
@@ -239,7 +241,7 @@ TEST_CASE("Scoreboard opening seat advances by one seat per round", "[scoreboard
     const unsigned int roundCount = scoreboard.getRoundCount();
     for(unsigned int i = 0 ; i < roundCount ; i++)
     {
-        REQUIRE(scoreboard.getCurrentRound().getOpenerSeat() == expectedSeat);
+        REQUIRE(scoreboard.getCurrentRound().getOpenerSeat() == Seat{expectedSeat});
         expectedSeat = (expectedSeat + 1) % n;
         if(i + 1 < roundCount)
             scoreboard.incrementCurrentRound();
@@ -276,4 +278,28 @@ TEST_CASE("Scoreboard all1GamesAreForehead", "[scoreboard]")
         if(i + 1 < roundCount)
             scoreboard.incrementCurrentRound();
     }
+}
+
+TEST_CASE("Round::addTrick requires a winner that is at the table", "[round]")
+{
+    Round round(1, Seat{0}, 3);
+
+    Trick unwon;
+
+    // The scoring path reads nothing but the winner, so an unwon trick would
+    // otherwise be stored and then counted for nobody.
+    REQUIRE_THROWS_AS(round.addTrick(unwon), std::logic_error);
+
+    Trick offTable;
+    offTable.setWinner(Seat{3});
+    REQUIRE_THROWS_AS(round.addTrick(offTable), std::out_of_range);
+
+    REQUIRE(round.getPlayedTrickCount() == 0);
+
+    Trick won;
+    won.setWinner(Seat{2});
+    round.addTrick(won);
+
+    REQUIRE(round.getPlayedTrickCount() == 1);
+    REQUIRE(round.getTricksWon(Seat{2}) == 1);
 }

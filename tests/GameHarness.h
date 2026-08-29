@@ -5,6 +5,7 @@
 #include <romanian_whist/GameEngine.h>
 #include <romanian_whist/IMoveProvider.h>
 #include <romanian_whist/Scoreboard.h>
+#include <romanian_whist/Seat.h>
 
 #include <cstdint>
 #include <functional>
@@ -19,7 +20,7 @@ struct GameHooks
 {
     // Fires after a bid is chosen, before placeBet() records it - so a hook
     // sees the same forbiddenBet() the bid was chosen against.
-    std::function<void(const GameEngine&, unsigned int seat, unsigned int bet)> onBeforeBetPlaced;
+    std::function<void(const GameEngine&, Seat seat, unsigned int bet)> onBeforeBetPlaced;
 
     // Fires after a card is chosen. `handBeforePlay` is a snapshot taken
     // before the move provider was asked, since Player::playCard erases the

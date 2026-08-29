@@ -166,9 +166,9 @@ std::optional<unsigned int> GameEngine::getForbiddenBet() const
     unsigned int betsPlaced = 0;
     unsigned int total = 0;
 
-    for(Seat seat = 0 ; seat < players.size() ; seat++)
+    for(unsigned int i = 0 ; i < players.size() ; i++)
     {
-        if(const std::optional<unsigned int> bet = round.getBet(seat))
+        if(const std::optional<unsigned int> bet = round.getBet(Seat{i}))
         {
             betsPlaced++;
             total += *bet;
@@ -287,7 +287,7 @@ const PlayerList &GameEngine::getPlayers() const
 
 Player &GameEngine::getPlayer(Seat seat)
 {
-    return players.at(seat);
+    return players.at(seat.index);
 }
 
 const Round &GameEngine::getCurrentRound() const
