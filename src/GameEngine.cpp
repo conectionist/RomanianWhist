@@ -39,6 +39,12 @@ void GameEngine::initializeDeck(unsigned int playerCount)
     if(playerCount < 2 || playerCount > 6)
         throw std::invalid_argument("playerCount must be between 2 and 6");
 
+    // dealCards() indexes the deck by players.size(), not by this argument -
+    // a mismatch here builds a deck sized for the wrong player count and
+    // dealCards() then reads past the end of it.
+    if(playerCount != players.size())
+        throw std::invalid_argument("playerCount must match the number of players added");
+
     // Deck::addCard only ever appends, so a second call without this would
     // leave two copies of every card in play.
     deck = Deck{};

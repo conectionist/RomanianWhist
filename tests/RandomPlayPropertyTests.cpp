@@ -3,11 +3,9 @@
 #include "GameHarness.h"
 
 #include <romanian_whist/AiMoveProvider.h>
-#include <romanian_whist/CardValidator.h>
 #include <romanian_whist/strategies/RandomCardStrategy.h>
 
 #include <algorithm>
-#include <numeric>
 
 using namespace romanian_whist;
 using namespace romanian_whist::test;
@@ -18,12 +16,37 @@ namespace
 // locally with the seed printed via INFO below. Breadth across seeds is the
 // point here, not which seeds are used.
 constexpr std::uint32_t kPropertySeedCount = 2000;
+
+// Independently reimplements the "follow suit, else trump, else anything"
+// rule, rather than calling CardValidator::getLegalCards() - the strategy
+// under test already calls that function to choose its card, so re-deriving
+// "expected" from the very function that produced "actual" would make this
+// check pass regardless of whether that function is correct.
+bool followsTheRules(const std::vector<Card*>& hand, Card* trump, const Suit* leadSuit, Card* playedCard)
+{
+    if(std::find(hand.begin(), hand.end(), playedCard) == hand.end())
+        return false;
+
+    if(leadSuit == nullptr)
+        return true;
+
+    const auto holdsSuit = [&](Suit suit)
+    {
+        return std::any_of(hand.begin(), hand.end(), [suit](Card* card) { return card->suit == suit; });
+    };
+
+    if(holdsSuit(*leadSuit))
+        return playedCard->suit == *leadSuit;
+
+    if(trump && holdsSuit(trump->suit))
+        return playedCard->suit == trump->suit;
+
+    return true;
+}
 }
 
 TEST_CASE("Random play never violates the rules", "[property]")
 {
-    CardValidator validator;
-
     for(std::uint32_t seed = 0 ; seed < kPropertySeedCount ; seed++)
     {
         INFO("seed = " << seed);
@@ -49,8 +72,7 @@ TEST_CASE("Random play never violates the rules", "[property]")
         hooks.onBeforeCardPlayed = [&](const std::vector<Card*>& handBeforePlay, Card* trump,
                                        const Suit* leadSuit, Card* playedCard)
         {
-            const auto legal = validator.getLegalCards(handBeforePlay, trump, leadSuit);
-            REQUIRE(std::find(legal.begin(), legal.end(), playedCard) != legal.end());
+            REQUIRE(followsTheRules(handBeforePlay, trump, leadSuit, playedCard));
         };
 
         hooks.onRoundScored = [&](const GameEngine& engine)

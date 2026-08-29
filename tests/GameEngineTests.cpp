@@ -24,6 +24,12 @@ void skipRounds(GameEngine& engine, unsigned int rounds)
     for(unsigned int i = 0 ; i < rounds ; i++)
         engine.completeCurrentRound();
 }
+
+void addPlayers(GameEngine& engine, unsigned int count)
+{
+    for(unsigned int i = 0 ; i < count ; i++)
+        engine.addPlayer("P" + std::to_string(i), dummyProvider());
+}
 }
 
 TEST_CASE("GameEngine::getForbiddenBet", "[game-engine]")
@@ -130,10 +136,22 @@ TEST_CASE("GameEngine::addPlayer rejects duplicate names", "[game-engine]")
 TEST_CASE("GameEngine::initializeDeck does not duplicate cards on a second call", "[game-engine]")
 {
     GameEngine engine;
+    addPlayers(engine, 4);
     engine.initializeDeck(4);
     engine.initializeDeck(4);
 
     REQUIRE(engine.getDeck().size() == 32);
+}
+
+TEST_CASE("GameEngine::initializeDeck rejects a playerCount that doesn't match the players added", "[game-engine]")
+{
+    // dealCards() indexes the deck by players.size(), not by initializeDeck's
+    // argument - a mismatch here used to build a deck sized for the wrong
+    // player count and read past the end of it once dealt.
+    GameEngine engine;
+    addPlayers(engine, 6);
+
+    REQUIRE_THROWS_AS(engine.initializeDeck(4), std::invalid_argument);
 }
 
 TEST_CASE("GameEngine::initializeDeck rejects impossible player counts", "[game-engine]")
@@ -155,6 +173,7 @@ TEST_CASE("GameEngine::initializeDeck rejects impossible player counts", "[game-
         for(unsigned int n = 2 ; n <= 6 ; n++)
         {
             GameEngine engine;
+            addPlayers(engine, n);
             REQUIRE_NOTHROW(engine.initializeDeck(n));
         }
     }
@@ -175,6 +194,7 @@ TEST_CASE("GameEngine deck composition", "[game-engine]")
     for(const auto& expectation : expectations)
     {
         GameEngine engine;
+        addPlayers(engine, expectation.playerCount);
         engine.initializeDeck(expectation.playerCount);
 
         const Deck& deck = engine.getDeck();
