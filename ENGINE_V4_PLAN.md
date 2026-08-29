@@ -840,8 +840,7 @@ around. Starting it before Phase 3 lands means writing code twice.
 Each phase ends with the full test suite green and the terminal client playable. **Do not
 proceed to the next phase until both hold** — see §4 for what "playable" requires.
 
-**Progress: Phase 0 done. Phase 1 done in the engine; its terminal migration is outstanding,
-so the client does not build against the current engine. Phases 2–6 not started.**
+**Progress: Phases 0 and 1 done, engine and terminal both. Phases 2–6 not started — Phase 2 is next.**
 
 ### Phase 0 — Make the engine testable, then pin its behaviour [DONE]
 
@@ -1082,7 +1081,7 @@ with the seed CI printed.
 
 ---
 
-### Phase 1 — Seats and the round data model [DONE — engine only]
+### Phase 1 — Seats and the round data model [DONE]
 
 Mechanical apart from step 6, which forces one design decision — no behaviour change either way.
 The golden tests must produce byte-identical scores.
@@ -1192,6 +1191,14 @@ Test fallout the phase description treats as mechanical but is not:
 - `GameEngineTests`' `"setResult before any bet does not corrupt getForbiddenBet"` section was
   deleted: bets and results no longer share storage, so there is nothing left to corrupt.
 - `tests/TestSupport.h` is gone — it existed only to provide `seatOf()`.
+- **The terminal migration was verified by byte-diffing a whole rendered game**, not by eye. The
+  client has no tests and §4 asks for "plays a full game", which over 26 rounds is not something
+  a reviewer can actually check. Seeding the engine and swapping the demo's `RandomCardStrategy`
+  for a deterministic bot makes `--demo --auto` reproducible; capturing that game before the
+  migration (against the Phase 0 engine, which has both the old API and the seeded constructor)
+  and after gives a 15,668-line diff that must be empty. It was. Mutating `getTricksWon` to read
+  the neighbouring seat moves 5,770 lines, so the check is not vacuous. Both patches are
+  reverted afterwards. **Worth repeating for Phase 2**, which rewrites far more of the client.
 - `tests/TrickTests.cpp` is new. `Trick` gained real logic this phase and had no direct
   coverage: the goldens exercise `cardsInPlayOrder()` only incidentally, and **reversing its
   play order leaves all seven golden games passing** — no golden asserts mid-trick state, and
