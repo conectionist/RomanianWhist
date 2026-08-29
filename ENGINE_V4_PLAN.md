@@ -1787,7 +1787,7 @@ refactor, and could ship on its own.
 
 ```
 0. 2-byte Card -> portable seeded shuffle -> 2..6 check -> tests -> goldens  [no behaviour change] [DONE]
-1. Seat + per-card seats in Trick; results derived; PlayerList -> vector     [no behaviour change]
+1. Seat + per-card seats in Trick; results derived; PlayerList -> deque      [no behaviour change] [DONE]
 2. IGameObserver; playRound()/run(); engine owns + validates play; terminal  [no behaviour change]
    2a. run() beside the old loop, both paths asserted equal
    2b. old driving API goes private; duplicated loop deleted
