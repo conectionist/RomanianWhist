@@ -2,6 +2,8 @@
 
 #include <utility>
 #include <algorithm>
+#include <optional>
+#include <stdexcept>
 #include <vector>
 
 namespace romanian_whist
@@ -15,7 +17,7 @@ void Scoreboard::initialize(const GameStructure &structure,
                             bool all1GamesAreForehead, 
                             PlayerList &players)
 {
-    auto currentPlayer = players.first();
+    Seat opener = 0;
 
     std::vector<unsigned int> gameNumbers;
 
@@ -54,16 +56,18 @@ void Scoreboard::initialize(const GameStructure &structure,
             gameNumbers.push_back(8);
     }
 
+    const unsigned int seatCount = static_cast<unsigned int>(players.size());
+
     for(int i : gameNumbers)
     {
-        Round r(i, currentPlayer);
+        Round r(i, opener, seatCount);
 
         if(i == 1 && all1GamesAreForehead)
-            r.setRoundType(RoundType::Forehead);  
+            r.setRoundType(RoundType::Forehead);
 
         addRound(std::move(r));
 
-        currentPlayer = players.next(currentPlayer);
+        opener = players.nextSeat(opener);
     }
 
     if(endWithForeheadAndHidden)
@@ -72,11 +76,11 @@ void Scoreboard::initialize(const GameStructure &structure,
 
         for(auto type : roundTypes)
         {
-            Round r(1, currentPlayer, type);
+            Round r(1, opener, seatCount, type);
 
             addRound(std::move(r));
 
-            currentPlayer = players.next(currentPlayer);
+            opener = players.nextSeat(opener);
         }
     }
 }
@@ -115,21 +119,29 @@ void Scoreboard::calculateScores(PlayerList& players)
 {
     Round& currentRound = getCurrentRound();
     
-    for(auto& player : players)
+    for(Seat seat = 0 ; seat < players.size() ; seat++)
     {
-        const std::string& playerName = player.getName();
-        
-        // Get the bet and actual result for this player
-        unsigned int bid = currentRound.getBet(playerName);
-        unsigned int actual = currentRound.getActual(playerName);
-        
-        int roundScore = calculateRoundScore(bid, actual);
+        Player& player = players.at(seat);
+
+        // Scoring only ever runs once betting is complete, so a seat with no
+        // bid means the loop skipped a bidder. Scoring that as a bid of zero
+        // would be a plausible-looking number covering a real bug, so say so
+        // instead - and throw rather than assert, which compiles out of a
+        // release build.
+        const std::optional<unsigned int> bid = currentRound.getBet(seat);
+
+        if(!bid)
+            throw std::logic_error("Scoreboard::calculateScores: seat has not bid");
+
+        const unsigned int actual = currentRound.getTricksWon(seat);
+
+        int roundScore = calculateRoundScore(*bid, actual);
         player.addToScore(roundScore);
         
         // Update streak counters
         if(shouldCountForStreaks(currentRound))
         {
-            if(bid == actual)
+            if(*bid == actual)
             {
                 player.incrementConsecutiveWins();
                 player.resetConsecutiveLosses();

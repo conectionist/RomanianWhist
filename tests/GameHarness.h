@@ -50,9 +50,9 @@ std::vector<int> finalScores(const GameEngine& engine);   // seat-ordered totals
 using RoundRecord = std::vector<std::vector<std::pair<unsigned int, unsigned int>>>;
 
 // Returns a GameHooks::onRoundScored hook that appends each round's record
-// onto `record` as it is played. The one place this reads Round::getBet()/
-// getActual() by name, so a later API change touches this function alone,
-// not every test that wants a round-by-round history.
+// onto `record` as it is played. The one place this reads a round's bids and
+// results, so a later API change touches this function alone, not every test
+// that wants a round-by-round history.
 std::function<void(const GameEngine&)> recordRoundsInto(RoundRecord& record);
 
 } // namespace romanian_whist::test

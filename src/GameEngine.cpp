@@ -29,9 +29,10 @@ void GameEngine::addPlayer(const std::string &name, std::unique_ptr<IMoveProvide
     if(scoreboardInitialized)
         throw std::logic_error("cannot add a player after initializeScoreboard() has been called");
 
-    // Round::bets is keyed by name (Round.h), so two seats sharing a name
-    // would silently share one bet and one trick count. Reject it here
-    // rather than let it corrupt scoring later.
+    // Bets and tricks are keyed by Seat now, so a shared name no longer
+    // corrupts scoring. It is still rejected because a name is how a client
+    // labels a seat on screen and how a player identifies their own: two "Ana"
+    // rows that cannot be told apart is a bad game, just no longer a wrong one.
     for(const auto& player : players)
     {
         if(player.getName() == name)
@@ -143,14 +144,14 @@ const Card *GameEngine::getCurrentTrumpCard() const
     return scoreboard.getCurrentRound().getTrumpCard();
 }
 
-PlayerList::iterator GameEngine::getFirstPlayerOfTheRound()
+Seat GameEngine::getRoundLeaderSeat() const
 {
-    return scoreboard.getCurrentRound().getFirstPlayer();
+    return scoreboard.getCurrentRound().getLeaderSeat();
 }
 
-PlayerList::iterator GameEngine::getNextPlayer(PlayerList::iterator player)
+Seat GameEngine::getNextSeat(Seat seat) const
 {
-    return players.next(player);
+    return players.nextSeat(seat);
 }
 
 unsigned int GameEngine::getPlayerCount() const
@@ -165,15 +166,12 @@ std::optional<unsigned int> GameEngine::getForbiddenBet() const
     unsigned int betsPlaced = 0;
     unsigned int total = 0;
 
-    // Counted by walking the players rather than by asking the bets map for its
-    // size, because setResult() writes into that same map and would inflate it
-    // once the round is under way.
-    for(const auto& player : players)
+    for(Seat seat = 0 ; seat < players.size() ; seat++)
     {
-        if(round.hasBet(player.getName()))
+        if(const std::optional<unsigned int> bet = round.getBet(seat))
         {
             betsPlaced++;
-            total += round.getBet(player.getName());
+            total += *bet;
         }
     }
 
@@ -198,14 +196,9 @@ bool GameEngine::isBetLegal(unsigned int bet) const
     return !forbidden || bet != *forbidden;
 }
 
-void GameEngine::placeBet(PlayerList::iterator player, unsigned int bet)
+void GameEngine::placeBet(Seat seat, unsigned int bet)
 {
-    scoreboard.getCurrentRound().setBet(player, bet);
-}
-
-void GameEngine::setResult(PlayerList::iterator player, unsigned int wonTricks)
-{
-    scoreboard.getCurrentRound().setResult(player, wonTricks);
+    scoreboard.getCurrentRound().setBet(seat, bet);
 }
 
 void GameEngine::clearAllPlayerHands()
@@ -224,23 +217,30 @@ void GameEngine::addTrickToCurrentRound(const Trick& trick)
     scoreboard.getCurrentRound().addTrick(trick);
 }
 
-PlayerList::iterator GameEngine::determineTrickWinner(const Trick& trick, PlayerList::iterator firstPlayer)
+Seat GameEngine::determineTrickWinner(const Trick& trick) const
 {
-    const auto playedCards = trick.getPlayedCards();
-    unsigned int bestIndex = 0;
+    const std::vector<PlayedCard>& playedCards = trick.getPlayedCards();
 
-    for(unsigned int i = 1 ; i < playedCards.size() ; i++)
+    if(playedCards.empty())
+        throw std::logic_error("determineTrickWinner() needs at least one played card");
+
+    std::size_t bestIndex = 0;
+
+    for(std::size_t i = 1 ; i < playedCards.size() ; i++)
     {
-        if(cardBeats(*playedCards[i], *playedCards[bestIndex], trick.getLeadSuit()))
+        if(cardBeats(*playedCards[i].card, *playedCards[bestIndex].card, trick.getLeadSuit()))
             bestIndex = i;
     }
 
-    return players.advanceCircular(firstPlayer, bestIndex);
+    // Read off the winning entry rather than counting seats round from the
+    // leader: the trick records who played each card, so the position a card
+    // was played in never has to be translated back into a seat.
+    return playedCards[bestIndex].seat;
 }
 
-void GameEngine::setFirstPlayerOfTheRound(PlayerList::iterator player)
+void GameEngine::setRoundLeaderSeat(Seat seat)
 {
-    scoreboard.getCurrentRound().setFirstPlayer(player);
+    scoreboard.getCurrentRound().setLeaderSeat(seat);
 }
 
 void GameEngine::completeCurrentRound()
@@ -285,6 +285,11 @@ const PlayerList &GameEngine::getPlayers() const
     return players;
 }
 
+Player &GameEngine::getPlayer(Seat seat)
+{
+    return players.at(seat);
+}
+
 const Round &GameEngine::getCurrentRound() const
 {
     return scoreboard.getCurrentRound();
@@ -310,7 +315,7 @@ RoundType GameEngine::getCurrentRoundType() const
     return scoreboard.getCurrentRound().getRoundType();
 }
 
-bool GameEngine::cardBeats(const Card& candidate, const Card& currentBest, Suit leadSuit)
+bool GameEngine::cardBeats(const Card& candidate, const Card& currentBest, Suit leadSuit) const
 {
     // The ranking itself lives on CardValidator, so that a strategy weighing up
     // "would this card win?" reasons with the very rule that will later declare

@@ -86,8 +86,11 @@ public:
     void dealCards();
     Card* getCurrentTrumpCard();
     const Card* getCurrentTrumpCard() const;
-    PlayerList::iterator getFirstPlayerOfTheRound();
-    PlayerList::iterator getNextPlayer(PlayerList::iterator player);
+
+    // Who leads the next trick: the round's opener until the first trick is
+    // won, then each trick's winner.
+    Seat getRoundLeaderSeat() const;
+    Seat getNextSeat(Seat seat) const;
     unsigned int getPlayerCount() const;
     // The bidding restriction: the final bidder may not make the round's bids
     // add up to exactly the trick count. getForbiddenBet() names the single bid
@@ -100,12 +103,16 @@ public:
     std::optional<unsigned int> getForbiddenBet() const;
     bool isBetLegal(unsigned int bet) const;
 
-    void placeBet(PlayerList::iterator player, unsigned int bet);
-    void setResult(PlayerList::iterator player, unsigned int wonTricks);
+    void placeBet(Seat seat, unsigned int bet);
     unsigned int getCurrentRoundTrickCount() const;
     void addTrickToCurrentRound(const Trick& trick);
-    PlayerList::iterator determineTrickWinner(const Trick& trick, PlayerList::iterator firstPlayer);
-    void setFirstPlayerOfTheRound(PlayerList::iterator player);
+
+    // Ranks whatever has been played so far, so this also answers "who is
+    // winning?" partway through a trick. Throws std::logic_error on a trick
+    // with no cards in it at all, which has no answer to give.
+    Seat determineTrickWinner(const Trick& trick) const;
+
+    void setRoundLeaderSeat(Seat seat);
     void completeCurrentRound();
     void calculateScores();
     void commitRoundScores();
@@ -119,11 +126,17 @@ public:
     // round's bets, results, trump and type - without keeping a parallel copy of
     // the game and hoping the two stay in step.
     //
-    // Both hand out const access only. Note that Round::getFirstPlayer() and
-    // getOpeningPlayer() still return mutable iterators, so a const Round does
-    // not fully seal off the players behind it.
+    // Both hand out const access only. A Round names players by Seat, which
+    // carries no access, so a const Round really does seal off the players
+    // behind it.
     const PlayerList& getPlayers() const;
     const Round& getCurrentRound() const;
+
+    // Mutable access to one seat, for a caller that still drives the loop
+    // itself and so has to call the non-const Player::playCard(). Phase 2 of
+    // ENGINE_V4_PLAN.md moves the loop into the engine and this goes with it -
+    // do not build on it.
+    Player& getPlayer(Seat seat);
 
     // Read-only access to the deck, for inspecting composition and shuffle
     // order (tests) without a test-only friend declaration.
@@ -135,7 +148,7 @@ public:
 
 private:
     void clearAllPlayerHands();
-    bool cardBeats(const Card& candidate, const Card& currentBest, Suit leadSuit);
+    bool cardBeats(const Card& candidate, const Card& currentBest, Suit leadSuit) const;
 };
 
 } // namespace romanian_whist

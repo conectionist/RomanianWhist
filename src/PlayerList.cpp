@@ -1,6 +1,5 @@
 #include <romanian_whist/PlayerList.h>
 
-#include <iterator>
 #include <stdexcept>
 #include <utility>
 
@@ -26,10 +25,7 @@ Player& PlayerList::at(size_type index)
     if(index >= players.size())
         throw std::out_of_range("PlayerList index out of range");
 
-    auto player = players.begin();
-    std::advance(player, index);
-
-    return *player;
+    return players[index];
 }
 
 const Player& PlayerList::at(size_type index) const
@@ -37,26 +33,25 @@ const Player& PlayerList::at(size_type index) const
     if(index >= players.size())
         throw std::out_of_range("PlayerList index out of range");
 
-    auto player = players.begin();
-    std::advance(player, index);
-
-    return *player;
+    return players[index];
 }
 
 Player& PlayerList::operator[](size_type index)
 {
-    auto player = players.begin();
-    std::advance(player, index);
-
-    return *player;
+    return players[index];
 }
 
 const Player& PlayerList::operator[](size_type index) const
 {
-    auto player = players.begin();
-    std::advance(player, index);
+    return players[index];
+}
 
-    return *player;
+Seat PlayerList::nextSeat(Seat seat) const
+{
+    if(players.empty())
+        return 0;
+
+    return static_cast<Seat>((seat + 1) % players.size());
 }
 
 PlayerList::iterator PlayerList::begin()
@@ -87,74 +82,6 @@ PlayerList::const_iterator PlayerList::end() const
 PlayerList::const_iterator PlayerList::cend() const
 {
     return players.cend();
-}
-
-PlayerList::iterator PlayerList::first()
-{
-    return players.begin();
-}
-
-PlayerList::const_iterator PlayerList::first() const
-{
-    return players.begin();
-}
-
-PlayerList::iterator PlayerList::next(iterator current)
-{
-    if(players.empty())
-        return players.end();
-
-    if(current == players.end())
-        return players.begin();
-
-    ++current;
-
-    if(current == players.end())
-        return players.begin();
-
-    return current;
-}
-
-PlayerList::const_iterator PlayerList::next(const_iterator current) const
-{
-    if(players.empty())
-        return players.end();
-
-    if(current == players.end())
-        return players.begin();
-
-    ++current;
-
-    if(current == players.end())
-        return players.begin();
-
-    return current;
-}
-
-PlayerList::iterator PlayerList::advanceCircular(iterator current, size_type steps)
-{
-    if(players.empty())
-        return players.end();
-
-    auto result = current;
-
-    for(size_type i = 0 ; i < steps ; i++)
-        result = next(result);
-
-    return result;
-}
-
-PlayerList::const_iterator PlayerList::advanceCircular(const_iterator current, size_type steps) const
-{
-    if(players.empty())
-        return players.end();
-
-    auto result = current;
-
-    for(size_type i = 0 ; i < steps ; i++)
-        result = next(result);
-
-    return result;
 }
 
 } // namespace romanian_whist

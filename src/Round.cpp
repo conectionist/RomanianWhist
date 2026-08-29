@@ -1,14 +1,18 @@
 #include <romanian_whist/Round.h>
 
+#include <stdexcept>
+
 namespace romanian_whist
 {
-Round::Round(unsigned int _trickCount, 
-             PlayerList::iterator player,
-             RoundType _type) : trump(nullptr),
+Round::Round(unsigned int _trickCount,
+             Seat _opener,
+             unsigned int seatCount,
+             RoundType _type) : bets(seatCount),
+                                trump(nullptr),
                                 trickCount(_trickCount),
                                 type(_type),
-                                firstPlayer(player),
-                                openingPlayer(player)
+                                leader(_opener),
+                                opener(_opener)
 {}
 
 void Round::addTrick(const Trick &trick)
@@ -16,16 +20,12 @@ void Round::addTrick(const Trick &trick)
     tricks.push_back(trick);
 }
 
-void Round::setBet(PlayerList::iterator player, unsigned int guess)
+void Round::setBet(Seat seat, unsigned int guess)
 {
-    Bet& bet = bets[player->getName()];
-    bet.guess = guess;
-    bet.guessSet = true;
-}
+    if(seat >= bets.size())
+        throw std::out_of_range("Round::setBet: seat out of range");
 
-void Round::setResult(PlayerList::iterator player, unsigned int wonTricks)
-{
-    bets[player->getName()].actual = wonTricks;
+    bets[seat] = guess;
 }
 
 void Round::setTrumpCard(Card *card)
@@ -48,19 +48,19 @@ unsigned int Round::getTrickCount() const
     return trickCount;
 }
 
-void Round::setFirstPlayer(PlayerList::iterator player)
+void Round::setLeaderSeat(Seat seat)
 {
-    firstPlayer = player;
+    leader = seat;
 }
 
-PlayerList::iterator Round::getFirstPlayer() const
+Seat Round::getLeaderSeat() const
 {
-    return firstPlayer;
+    return leader;
 }
 
-PlayerList::iterator Round::getOpeningPlayer() const
+Seat Round::getOpenerSeat() const
 {
-    return openingPlayer;
+    return opener;
 }
 
 void Round::setRoundType(RoundType _type)
@@ -78,30 +78,28 @@ std::size_t Round::getPlayedTrickCount() const
     return tricks.size();
 }
 
-unsigned int Round::getBet(const std::string& playerName) const
+std::optional<unsigned int> Round::getBet(Seat seat) const
 {
-    auto it = bets.find(playerName);
-    if(it != bets.end())
-    {
-        return it->second.guess;
-    }
-    return 0;
+    if(seat >= bets.size())
+        throw std::out_of_range("Round::getBet: seat out of range");
+
+    return bets[seat];
 }
 
-unsigned int Round::getActual(const std::string& playerName) const
+unsigned int Round::getTricksWon(Seat seat) const
 {
-    auto it = bets.find(playerName);
-    if(it != bets.end())
-    {
-        return it->second.actual;
-    }
-    return 0;
-}
+    if(seat >= bets.size())
+        throw std::out_of_range("Round::getTricksWon: seat out of range");
 
-bool Round::hasBet(const std::string& playerName) const
-{
-    auto it = bets.find(playerName);
-    return it != bets.end() && it->second.guessSet;
+    unsigned int won = 0;
+
+    for(const Trick& trick : tricks)
+    {
+        if(trick.hasWinner() && trick.getWinner() == seat)
+            won++;
+    }
+
+    return won;
 }
 
 } // namespace romanian_whist
