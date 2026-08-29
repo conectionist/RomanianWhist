@@ -22,6 +22,13 @@ void GameEngine::addPlayer(const std::string &name, std::unique_ptr<IMoveProvide
     if(deckInitialized)
         throw std::logic_error("cannot add a player after initializeDeck() has been called");
 
+    // The round schedule is sized and its opener rotation laid out for the
+    // player count at the moment initializeScoreboard() runs. A seat added
+    // afterwards leaves the game playing, say, a 3-player 21-round schedule
+    // with 4 seats, and the rotation no longer returning to the same opener.
+    if(scoreboardInitialized)
+        throw std::logic_error("cannot add a player after initializeScoreboard() has been called");
+
     // Round::bets is keyed by name (Round.h), so two seats sharing a name
     // would silently share one bet and one trick count. Reject it here
     // rather than let it corrupt scoring later.
@@ -38,7 +45,16 @@ void GameEngine::initializeScoreboard(const GameStructure &structure,
                                       bool endWithForeheadAndHidden, 
                                       bool all1GamesAreForehead)
 {
+    // Scoreboard::initialize() appends its rounds without clearing what is
+    // already there, so a second call would leave a 21-round schedule 42
+    // rounds long, with the opener rotation restarting halfway through.
+    // Reject it outright, as initializeDeck() does.
+    if(scoreboardInitialized)
+        throw std::logic_error("initializeScoreboard() has already been called");
+
     scoreboard.initialize(structure, endWithForeheadAndHidden, all1GamesAreForehead, players);
+
+    scoreboardInitialized = true;
 }
 
 void GameEngine::initializeDeck(unsigned int playerCount)
@@ -86,6 +102,17 @@ void GameEngine::shuffleDeck()
 
 void GameEngine::dealCards()
 {
+    // Without a deck there is nothing to hand out: deck[index] would index an
+    // empty Deck and every player would end up holding a Card* into nothing,
+    // with the crash deferred to the first dereference far from here.
+    if(!deckInitialized)
+        throw std::logic_error("dealCards() requires initializeDeck() to have been called");
+
+    // The trick count comes from the current round, and with no schedule
+    // there is no current round to read it from.
+    if(!scoreboardInitialized)
+        throw std::logic_error("dealCards() requires initializeScoreboard() to have been called");
+
     clearAllPlayerHands();
 
     unsigned int gameCount = scoreboard.getCurrentRound().getTrickCount();

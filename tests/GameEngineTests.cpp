@@ -160,6 +160,72 @@ TEST_CASE("GameEngine::addPlayer rejects a player added after initializeDeck", "
     REQUIRE(engine.getPlayerCount() == 4);
 }
 
+TEST_CASE("GameEngine::addPlayer rejects a player added after initializeScoreboard", "[game-engine]")
+{
+    // The schedule's length and its opener rotation are both laid out for
+    // the player count at the moment initializeScoreboard() runs; a seat
+    // added afterwards used to pass every check and leave a 4-player game
+    // running a 3-player, 21-round schedule.
+    GameEngine engine;
+    addPlayers(engine, 3);
+    engine.initializeScoreboard(GameStructure::S_181, false, false);
+    const unsigned int roundCount = engine.getRoundCount();
+
+    REQUIRE_THROWS_AS(engine.addPlayer("extra", dummyProvider()), std::logic_error);
+    REQUIRE(engine.getPlayerCount() == 3);
+    REQUIRE(engine.getRoundCount() == roundCount);
+}
+
+TEST_CASE("GameEngine::initializeScoreboard rejects a second call", "[game-engine]")
+{
+    // Scoreboard::initialize() appends without clearing, so a second call
+    // used to double the schedule - 21 rounds became 42, with the opener
+    // rotation restarting halfway through.
+    GameEngine engine;
+    addPlayers(engine, 3);
+    engine.initializeScoreboard(GameStructure::S_181, false, false);
+    const unsigned int roundCount = engine.getRoundCount();
+    REQUIRE(roundCount == 21);
+
+    REQUIRE_THROWS_AS(engine.initializeScoreboard(GameStructure::S_181, false, false),
+                      std::logic_error);
+    REQUIRE(engine.getRoundCount() == roundCount);
+}
+
+TEST_CASE("GameEngine::dealCards requires the deck and the scoreboard", "[game-engine]")
+{
+    SECTION("without initializeDeck it throws instead of dealing out of an empty deck")
+    {
+        // Every player would otherwise be handed a Card* into an empty
+        // Deck, with the crash deferred to the first dereference.
+        GameEngine engine;
+        addPlayers(engine, 3);
+        engine.initializeScoreboard(GameStructure::S_181, false, false);
+
+        REQUIRE_THROWS_AS(engine.dealCards(), std::logic_error);
+    }
+
+    SECTION("without initializeScoreboard it throws instead of reading a missing round")
+    {
+        GameEngine engine;
+        addPlayers(engine, 3);
+        engine.initializeDeck(3);
+
+        REQUIRE_THROWS_AS(engine.dealCards(), std::logic_error);
+    }
+
+    SECTION("with both in place it deals")
+    {
+        GameEngine engine;
+        addPlayers(engine, 3);
+        engine.initializeScoreboard(GameStructure::S_181, false, false);
+        engine.initializeDeck(3);
+        engine.shuffleDeck();
+
+        REQUIRE_NOTHROW(engine.dealCards());
+    }
+}
+
 TEST_CASE("GameEngine::initializeDeck rejects a playerCount that doesn't match the players added", "[game-engine]")
 {
     // dealCards() indexes the deck by players.size(), not by initializeDeck's
