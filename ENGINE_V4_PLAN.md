@@ -773,7 +773,7 @@ change the engine's public API, so the terminal client stops compiling the momen
 
 | Phase | Terminal work | Files |
 |---|---|---|
-| 0 — testability | **None.** Source-compatible: `Deck` is not reachable from `GameEngine`'s public API, and giving the enums an underlying type does not change `static_cast<int>` comparisons or `switch` statements. | — |
+| 0 — testability | **One narrow exception, otherwise none as planned.** `SetupWizard`'s custom-setup path let a spectator pick "1 bot" (no human seat), which `initializeDeck`'s new player-count guards turned from a degenerate game into a thrown exception; fixed by raising the minimum to 2 bots when spectating. Nothing else needed to change for the terminal to build and play. | `SetupWizard.cpp`, `engine-v4` branch, commit `949fee0` |
 | 1 — seats | Mechanical but broad | `TerminalRomanianWhist.cpp` (every iterator use, `seatOf`, both `setResult` call sites), `GameView.cpp` (`hasBet`/`getBet` by name → by seat, `getActual` → `getTricksWon`) |
 | 2 — engine owns the loop | **Substantial rewrite** | `TerminalRomanianWhist.{h,cpp}` becomes observer callbacks; `markCurrentlyWinning` switches to `getCurrentTrickLeader()`; `GameView.cpp` loses `openingSeat` and rebuilds `view.table` from `getCurrentTrick()`'s seats; `Pacer` calls move into the callbacks. `startGame()` keeps its v3 setup sequence this phase — §3.7 shows the post-Phase-3 shape, Phase 2 step 9 the interim one |
 | 3 — setup | Small | `applySetup()` → builds a `GameSetup`; `Renderer::drawGameOver` takes `std::vector<Standing>`; the scoreboard rows move off `getPlayerRoundScores()` onto `getRoundScore(Seat)` / `getTotalScore(Seat)` |
@@ -820,9 +820,53 @@ around. Starting it before Phase 3 lands means writing code twice.
 Each phase ends with the full test suite green and the terminal client playable. **Do not
 proceed to the next phase until both hold** — see §4 for what "playable" requires.
 
-### Phase 0 — Make the engine testable, then pin its behaviour
+**Progress: Phase 0 done. Phases 1–6 not started — Phase 1 is next.**
+
+### Phase 0 — Make the engine testable, then pin its behaviour [DONE]
 
 Nothing else can be done safely first. There are no tests today.
+
+**Status: done.** Merged to `master` as
+[`a3f82ea`](https://github.com/conectionist/romanian_whist_engine/commit/a3f82ea) (squashed from
+eight review-driven commits on `engine-v4`). `ctest` green on both presets, `-Wall -Wextra` clean,
+terminal client rebuilt from scratch and still plays a full game — with the one exception recorded
+in §4's table above.
+
+0a–0g shipped as specified below. Several rounds of independent code review — not anticipated by
+this plan, since none of it was known to be broken until someone went looking — found real bugs
+the original checklist didn't cover. All were fixed and covered by regression tests before merge:
+
+- **`Round::setResult` could be mistaken for a real bet.** `hasBet()` checked map membership, and
+  `setResult()` (recording tricks won) inserted a map entry the same way `setBet()` does — so
+  seeding a result before a player had bet made `getForbiddenBet()` silently stop enforcing the
+  final-bidder restriction for the rest of the round. Reproduced against the built library before
+  fixing. This bug predates this plan entirely; nothing above knew to look for it.
+- **Setup and dealing are now fully guarded, not just at entry.** `initializeDeck` rejects a
+  `playerCount` that doesn't match `players.size()` (confirmed under ASan as a heap-buffer-overflow
+  otherwise) and rejects being called a second time outright — an earlier "clear and rebuild"
+  attempt at the second-call case was itself found to dangle every already-dealt `Card*` under
+  ASan, which is why it rejects rather than retries. `addPlayer` rejects a duplicate name
+  (`Round::bets` is name-keyed, so a collision silently shares one bet and one trick count between
+  two seats — confirmed by reproduction) and rejects being called after `initializeDeck()` or
+  `initializeScoreboard()` has run, for the same reason those two reject a second call on
+  themselves. `dealCards()` requires both to have completed first.
+- **This lands ahead of, and changes the shape of, Phase 3's plans below.** "Reject a second
+  `start()`" and "duplicate names are rejected" (§Phase 3) are *already true* today, as interim
+  per-method guards rather than one `start()`-level check. Phase 3 still has real work — folding
+  these into one validation pass, and adding the empty-name rejection Phase 3 specifies that
+  nothing above implements yet — but it is consolidating existing behaviour, not inventing it.
+  Re-read Phase 3's relevant sections (marked below) before implementing them.
+- **Two smaller test-infrastructure fixes, worth knowing about when trusting this safety net.**
+  CI's `ctest` invocations now pass `--no-tests=error`, since a build where `WHIST_BUILD_TESTS`
+  lands off otherwise prints "No tests were found!!!" and exits 0 — all three jobs green, having
+  run nothing. And the property suite's card-legality check was found to be tautological (it
+  re-derived "legal" from the exact `CardValidator::getLegalCards` call the strategy under test had
+  just used to choose the card, so it could not fail regardless of whether that function was
+  correct); replaced with an independent reimplementation of the rule, confirmed to actually catch
+  a mutation the old check passed straight through.
+
+None of this moved a golden score — every fix above closes a path nothing in the terminal client
+or the test harness ever exercised.
 
 **0a. Two-byte `Card`** (small, orthogonal, and it settles a design question later)
 
@@ -1014,7 +1058,7 @@ with the seed CI printed.
 
 ---
 
-### Phase 1 — Seats and the round data model
+### Phase 1 — Seats and the round data model [NOT STARTED]
 
 Mechanical apart from step 6, which forces one design decision — no behaviour change either way.
 The golden tests must produce byte-identical scores.
@@ -1085,7 +1129,7 @@ The golden tests must produce byte-identical scores.
 
 ---
 
-### Phase 2 — The engine owns the loop
+### Phase 2 — The engine owns the loop [NOT STARTED]
 
 The core of the refactor.
 
@@ -1301,7 +1345,7 @@ Enter-to-continue behaving as before.
 
 ---
 
-### Phase 3 — Setup consolidation
+### Phase 3 — Setup consolidation [NOT STARTED]
 
 1. Add `GameSetup`, `SeatSetup`, `GameEngine::start(GameSetup)`. Fold Phase 0b's interim
    `GameEngine(std::uint32_t seed)` constructor into `GameSetup::shuffleSeed` and delete it,
@@ -1313,12 +1357,15 @@ Enter-to-continue behaving as before.
    throws `std::invalid_argument`.
 
    **Reject a second `start()` as well**, with `std::logic_error`, since it is a state error rather
-   than a bad argument. `initializeDeck` appends to `deck` unconditionally
-   (`GameEngine.cpp:23-32`), so calling it twice builds a double-sized deck: the deal then draws
-   from the wrong half, the trump index lands in the wrong place, and nothing throws. This is the
-   only setup mistake that produces a plausible-looking game rather than an error, which is why it
-   is worth a check of its own. Add it to the 0e setup-validation cases alongside the 1-seat and
-   7-seat rows.
+   than a bad argument. **Phase 0 already gets most of the way here** (see its status note above):
+   `initializeDeck` and `initializeScoreboard` each now reject being called a second time, and
+   `addPlayer` rejects being called after either has run, so most ways of misusing the current
+   per-method API already throw before they can corrupt anything — the double-sized-deck failure
+   mode this paragraph originally warned about (`initializeDeck` appending unconditionally) no
+   longer exists. What Phase 3 still owns: `start()` folds the three interim guards into one call,
+   so a second `start()` throws a single clear error naming `start()` itself, rather than whichever
+   of the three internal methods happens to run first and throw about *itself*. Add it to the 0e
+   setup-validation cases alongside the 1-seat and 7-seat rows.
 3. Perform the four setup steps internally, in order. `initializeDeck` no longer takes a player
    count; it reads its own.
 4. Delete `addPlayer`, `initializeScoreboard`, `initializeDeck`, `setStatus` from the public API.
@@ -1338,6 +1385,13 @@ Enter-to-continue behaving as before.
    `onRoundScored` and `onRoundComplete`.
 
 #### Duplicate names are rejected — decided
+
+**Phase 0 already added this as an interim guard on `addPlayer`** (see its status note above),
+with the same exact-byte-comparison reasoning laid out below — this section's decisions are what
+that guard followed, not the other way round. What is *not* yet done: empty names are still
+accepted, since a lone empty name is not a duplicate of anything. When folding the check into
+`start()`, add the empty-name rejection in the same pass rather than leaving it as a second gap
+someone has to rediscover.
 
 `start()` throws `std::invalid_argument` if two seats share a name. Two players called John is
 not a thing that happens at a real table; one of them becomes Johnny.
@@ -1370,7 +1424,7 @@ distinct names. No client changes are needed.
 
 ---
 
-### Phase 4 — Cards by value
+### Phase 4 — Cards by value [NOT STARTED]
 
 Removes the two subtlest rules in the codebase, and fixes one live bug. No other phase depends on
 it, but "optional" overstates that — see the third bullet.
@@ -1485,7 +1539,7 @@ round history has to be written after this phase, never before it.
 
 ---
 
-### Phase 5 — Forehead and Hidden
+### Phase 5 — Forehead and Hidden [NOT STARTED]
 
 Closes the gap `IMPLEMENTATION_PLAN.md` records. See §3.6 for why this is far smaller than it
 first looks, and for what it deliberately does not do.
@@ -1531,7 +1585,7 @@ output. Two things keep that honest:
   desynchronises its generator for every round after. With no RNG strategy in the golden games,
   the difference stays where it belongs and the eye can check it.
 
-### Phase 6 — Documentation and release
+### Phase 6 — Documentation and release [NOT STARTED]
 
 Nothing is *decided* here — the contracts were settled in §3.8 and Phase 2. This phase writes
 them where a client author will find them.
@@ -1624,7 +1678,7 @@ refactor, and could ship on its own.
 ## 7. Order of work, condensed
 
 ```
-0. 2-byte Card -> portable seeded shuffle -> 2..6 check -> tests -> goldens  [no behaviour change]
+0. 2-byte Card -> portable seeded shuffle -> 2..6 check -> tests -> goldens  [no behaviour change] [DONE]
 1. Seat + per-card seats in Trick; results derived; PlayerList -> vector     [no behaviour change]
 2. IGameObserver; playRound()/run(); engine owns + validates play; terminal  [no behaviour change]
    2a. run() beside the old loop, both paths asserted equal
