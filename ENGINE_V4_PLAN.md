@@ -148,8 +148,28 @@ crossing it do not.
 
 ```cpp
 // include/romanian_whist/Seat.h
-namespace romanian_whist { using Seat = unsigned int; }
+namespace romanian_whist
+{
+struct Seat
+{
+    unsigned int index;
+
+    explicit constexpr Seat(unsigned int _index) : index(_index) {}
+};
+
+constexpr bool operator==(Seat left, Seat right);
+constexpr bool operator!=(Seat left, Seat right);
+}
 ```
+
+**A struct, not `using Seat = unsigned int`.** A seat is always passed next to a count that looks
+identical to it — `placeBet(Seat, unsigned int bet)`, `Round(unsigned int trickCount, Seat opener,
+unsigned int seatCount)` — and with an alias every swapped call still compiles. The iterator this
+replaces made those a compile error, and an alias would quietly give that back at exactly the
+moment the client's call sites are being rewritten. `index` is public because a seat *is* an
+index: it keys `Round::bets` and `PlayerList`, so `bets[seat.index]` says what an accessor would,
+only shorter. Loops over the table read `for(unsigned int i = 0 ; i < count ; i++) { Seat seat{i};
+… }`.
 
 Iterators become an internal detail of `PlayerList`. This deletes `seatOf()` from every client,
 and lets `Round.h` and `Trick.h` stop including `PlayerList.h` entirely — a real decoupling, since
@@ -456,10 +476,20 @@ nobody has checked against a real need. Either name the caller — a Qt bidding 
 `GET /game/{id}` payload are the plausible ones — or leave them out until one exists.
 
 **Removed from the public API** (all become private implementation details of `playRound()`):
-`shuffleDeck`, `dealCards`, `placeBet`, `setResult`, `addTrickToCurrentRound`,
-`determineTrickWinner`, `setFirstPlayerOfTheRound`, `completeCurrentRound`, `calculateScores`,
-`commitRoundScores`, `initializeScoreboard`, `initializeDeck`, `setStatus`,
-`getFirstPlayerOfTheRound`, `getNextPlayer`.
+`shuffleDeck`, `dealCards`, `placeBet`, `addTrickToCurrentRound`, `determineTrickWinner`,
+`setRoundLeaderSeat`, `completeCurrentRound`, `calculateScores`, `commitRoundScores`,
+`initializeScoreboard`, `initializeDeck`, `setStatus`, `getRoundLeaderSeat`, `getNextSeat`.
+
+**This list is written against the post-Phase-1 API.** Earlier drafts named `setResult`,
+`setFirstPlayerOfTheRound`, `getFirstPlayerOfTheRound` and `getNextPlayer`; the first no longer
+exists at all and the other three are the `Seat` names above.
+
+**`getPlayer(Seat)` goes with them, and it is the one that matters.** Phase 1 added it as a
+deliberate temporary: converting the accessors to `Seat` closed the only door handing out a
+non-const `Player&`, which a caller still driving the loop needs to reach the non-const
+`playCard()`. Once `playRound()` is that caller, nothing outside the engine has any business
+with a mutable `Player` — and leaving it reopens the const-correctness hole §3.1 closes,
+permanently and silently, because nothing fails when an accessor merely survives.
 
 `Player::playCard` and `Player::getBet` become private with `friend class GameEngine`, so no
 client can reach past the engine into a player again.
@@ -774,7 +804,7 @@ change the engine's public API, so the terminal client stops compiling the momen
 | Phase | Terminal work | Files |
 |---|---|---|
 | 0 — testability | **One narrow exception, otherwise none as planned.** `SetupWizard`'s custom-setup path let a spectator pick "1 bot" (no human seat), which `initializeDeck`'s new player-count guards turned from a degenerate game into a thrown exception; fixed by raising the minimum to 2 bots when spectating. Nothing else needed to change for the terminal to build and play. | `SetupWizard.cpp`, `engine-v4` branch, commit `949fee0` |
-| 1 — seats | Mechanical but broad | `TerminalRomanianWhist.cpp` (every iterator use, `seatOf`, both `setResult` call sites), `GameView.cpp` (`hasBet`/`getBet` by name → by seat, `getActual` → `getTricksWon`) |
+| 1 — seats | **Done.** Narrower than predicted: **two files**, since `ConsoleMoveProvider`, `Renderer`, `CardFormat`, `SetupWizard` and `Pacer` touch only `BetContext`/`PlayContext`/`Card`, none of which this phase changed. `Seat` is a struct with an explicit constructor (§3.1), so a seat built from a loop index is `Seat{i}` and an index taken from a seat is `seat.index` | `TerminalRomanianWhist.{h,cpp}` (every iterator use; `seatOf`, both `setResult` call sites and the `tricksWon` vector all deleted; `Player` access goes through `GameEngine::getPlayer(Seat)`; `trick.getPlayedCards()` → `trick.cardsInPlayOrder()` where a flat card list is wanted), `GameView.cpp` (`hasBet`/`getBet` by name → by seat, `getActual` → `getTricksWon`) |
 | 2 — engine owns the loop | **Substantial rewrite** | `TerminalRomanianWhist.{h,cpp}` becomes observer callbacks; `markCurrentlyWinning` switches to `getCurrentTrickLeader()`; `GameView.cpp` loses `openingSeat` and rebuilds `view.table` from `getCurrentTrick()`'s seats; `Pacer` calls move into the callbacks. `startGame()` keeps its v3 setup sequence this phase — §3.7 shows the post-Phase-3 shape, Phase 2 step 9 the interim one |
 | 3 — setup | Small | `applySetup()` → builds a `GameSetup`; `Renderer::drawGameOver` takes `std::vector<Standing>`; the scoreboard rows move off `getPlayerRoundScores()` onto `getRoundScore(Seat)` / `getTotalScore(Seat)` |
 | 4 — cards by value | Moderate | `ConsoleMoveProvider.cpp` (`layOutHand`, index-returning `playCard`), `CardFormat.{h,cpp}`, `GameView.cpp` |
@@ -820,7 +850,7 @@ around. Starting it before Phase 3 lands means writing code twice.
 Each phase ends with the full test suite green and the terminal client playable. **Do not
 proceed to the next phase until both hold** — see §4 for what "playable" requires.
 
-**Progress: Phase 0 done. Phases 1–6 not started — Phase 1 is next.**
+**Progress: Phases 0 and 1 done, engine and terminal both. Phases 2–6 not started — Phase 2 is next.**
 
 ### Phase 0 — Make the engine testable, then pin its behaviour [DONE]
 
@@ -1042,6 +1072,9 @@ explores the rest. Over a few thousand seeded games, assert the invariants:
 - no player ever plays a card `CardValidator::getLegalCards` did not offer;
 - no bid ever equals `getForbiddenBet()`, and no bid exceeds the trick count;
 - tricks won across the seats always sum to the round's trick count.
+  *(Phase 1 note: results are now counted off the round's stored tricks, so this sum only
+  recounts them. The test asserts `getPlayedTrickCount() == getCurrentRoundTrickCount()`
+  instead — that the round played out as many tricks as it was dealt for.)*
 
 This is the net for exactly the class of bug Phase 2 can introduce and a golden cannot catch.
 
@@ -1058,7 +1091,7 @@ with the seed CI printed.
 
 ---
 
-### Phase 1 — Seats and the round data model [NOT STARTED]
+### Phase 1 — Seats and the round data model [DONE]
 
 Mechanical apart from step 6, which forces one design decision — no behaviour change either way.
 The golden tests must produce byte-identical scores.
@@ -1126,6 +1159,81 @@ The golden tests must produce byte-identical scores.
 > and without it a reviewer may read the whole phase as cosmetic.
 
 **Verify:** golden scores unchanged; terminal plays a full game.
+
+#### What implementing it found, beyond the checklist above
+
+The engine half landed as written and the golden scores did not move. Five things the
+checklist did not account for:
+
+- **`Round` had no way to size its bets vector.** Step 2 indexes `bets` by seat but the
+  constructor never learned the table size. It now takes a `seatCount`, passed by
+  `Scoreboard::initialize` from `players.size()`.
+- **Step 1 closes the only mutable door into `Player`.** `getFirstPlayerOfTheRound()` and
+  `getNextPlayer()` were the sole accessors handing out a non-const `Player&`, and that is how a
+  caller reaches the non-const `playCard()`. A `Seat` carries no access — which is the point —
+  but the client and the test harness still drive the loop until Phase 2. Bridged with
+  `Player& GameEngine::getPlayer(Seat)`, commented as a Phase 2 casualty. **Phase 2 must delete
+  it**, or the hole §3.1 closes reopens permanently.
+- **Step 4's "assert the optional is engaged" is a `throw`, not an `assert`.** Phase 0 already
+  had to fix a guard that compiled out of a release build (`d93e355`); an `assert` here would
+  repeat that. It also broke three existing tests that bid for only one of two seats — see below.
+- **`Trick::getCardPlayedBy(Seat)` was added and then removed again.** Step 6 asks for it, but
+  §3.3's review note lists it as one of two accessors with no caller in this plan and says to
+  leave it out until one exists. It went in, had no caller and no test, and the client migration
+  turned out not to want it either — `GameView` rebuilds its table by iterating
+  `getPlayedCards()`. Deleted; it can come back when a Qt bidding panel or a web payload asks.
+  **Step 6's instruction to add it is superseded by §3.3.**
+- **Step 8's "three call sites" in the terminal is four.** `GameView.cpp:50`'s
+  `round.hasBet(seat.name)` goes with the others, folding into `getBet(seat).has_value()`.
+  §4's table had this right; the step list did not.
+- **`determineTrickWinner`'s leader argument becomes dead**, so it was dropped and the method
+  made `const`. It now throws on a trick with no cards at all, where `advanceCircular(leader, 0)`
+  used to return the leader. It still ranks a *partly played* trick, which
+  `markCurrentlyWinning` depends on.
+
+Test fallout the phase description treats as mechanical but is not:
+
+- `ScoreboardTests` drove scoring through `setResult`. With results derived from stored tricks,
+  every such test has to award real `Trick`s — a local `awardTricks()` helper — and every seat
+  must bid, or `calculateScores` now throws. `"Scoreboard round scoring"` gave both seats a
+  trick in a **one-trick** round, which derived counting cannot represent; it moved to a 2-trick
+  round, with its asserted scores unchanged.
+- `GameEngineTests`' `"setResult before any bet does not corrupt getForbiddenBet"` section was
+  deleted: bets and results no longer share storage, so there is nothing left to corrupt.
+- `tests/TestSupport.h` is gone — it existed only to provide `seatOf()`.
+- **The terminal migration was verified by byte-diffing a whole rendered game**, not by eye. The
+  client has no tests and §4 asks for "plays a full game", which over 26 rounds is not something
+  a reviewer can actually check. Seeding the engine and swapping the demo's `RandomCardStrategy`
+  for a deterministic bot makes `--demo --auto` reproducible; capturing that game before the
+  migration (against the Phase 0 engine, which has both the old API and the seeded constructor)
+  and after gives a 15,668-line diff that must be empty. It was. Mutating `getTricksWon` to read
+  the neighbouring seat moves 5,770 lines, so the check is not vacuous. Both patches are
+  reverted afterwards. **Worth repeating for Phase 2**, which rewrites far more of the client.
+- `tests/TrickTests.cpp` is new. `Trick` gained real logic this phase and had no direct
+  coverage: the goldens exercise `cardsInPlayOrder()` only incidentally, and **reversing its
+  play order leaves all seven golden games passing** — no golden asserts mid-trick state, and
+  the bundled strategies read the trick as a set. `determineTrickWinner`'s empty-trick throw and
+  its partly-played ranking (what the terminal's `markCurrentlyWinning` needs) are pinned in
+  `GameEngineTests` for the same reason: mutating it to name the winner by position rather than
+  by seat fails the goldens too, but only the targeted test says where.
+
+#### What review found after the phase landed
+
+Three fixes on top of the above, all with the golden scores still unmoved:
+
+- **`Round::addTrick` accepted a trick with no winner.** Results are derived from stored winners
+  alone, so a caller that added before `setWinner` scored every seat 0 tricks in silence — the
+  half of the model `setBet`'s bounds check and `calculateScores`' missing-bid throw already
+  guarded. It now throws `std::logic_error` on an unwon trick and `std::out_of_range` on a winner
+  off the table. Phase 2's in-engine loop inherits the guard.
+- **The property test's round-scored assertion had been weakened into a tautology.** It was
+  swapped to `getPlayedTrickCount() == getCurrentRoundTrickCount()`, which the harness cannot
+  violate — one trick is added per iteration. Summing `getTricksWon()` across the seats is *not*
+  a recount, because that method only counts tricks with a winner set: with the sum restored,
+  deleting the harness's `setWinner` fails on seed 0, where the trick-count form passed 1.17M
+  assertions. Both assertions are kept.
+- **`Seat` became a struct** (§3.1), which was the alias's whole reason for existing put back.
+
 
 ---
 

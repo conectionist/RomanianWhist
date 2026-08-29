@@ -64,7 +64,7 @@ TEST_CASE("Random play never violates the rules", "[property]")
 
         GameHooks hooks;
 
-        hooks.onBeforeBetPlaced = [&](const GameEngine& engine, unsigned int, unsigned int bet)
+        hooks.onBeforeBetPlaced = [&](const GameEngine& engine, Seat, unsigned int bet)
         {
             REQUIRE(engine.isBetLegal(bet));
         };
@@ -75,14 +75,28 @@ TEST_CASE("Random play never violates the rules", "[property]")
             REQUIRE(followsTheRules(handBeforePlay, trump, leadSuit, playedCard));
         };
 
+        // Tallied here as each trick is won, so the round's own results have
+        // something independent to be held against. A sum over the seats would
+        // not do: addTrick() rejects a trick with no winner or an off-table
+        // one, so that total can only ever equal getPlayedTrickCount(), and it
+        // stays right even if the round credits every trick to the wrong seat.
+        std::vector<unsigned int> tricksWonBySeat(playerCount, 0);
+
+        hooks.onTrickWon = [&](Seat winner)
+        {
+            tricksWonBySeat[winner.index]++;
+        };
+
         hooks.onRoundScored = [&](const GameEngine& engine)
         {
-            const auto& players = engine.getPlayers();
-            unsigned int totalTricksWon = 0;
-            for(unsigned int i = 0 ; i < players.size() ; i++)
-                totalTricksWon += engine.getCurrentRound().getActual(players.at(i).getName());
+            const Round& round = engine.getCurrentRound();
 
-            REQUIRE(totalTricksWon == engine.getCurrentRoundTrickCount());
+            for(unsigned int i = 0 ; i < engine.getPlayerCount() ; i++)
+                REQUIRE(round.getTricksWon(Seat{i}) == tricksWonBySeat[i]);
+
+            REQUIRE(round.getPlayedTrickCount() == engine.getCurrentRoundTrickCount());
+
+            std::fill(tricksWonBySeat.begin(), tricksWonBySeat.end(), 0u);
         };
 
         playFullGame(structure, std::move(providers), seed, hooks);

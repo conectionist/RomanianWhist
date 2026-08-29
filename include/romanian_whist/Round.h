@@ -1,74 +1,76 @@
 #ifndef ROUND_H
 #define ROUND_H
 
-#include <romanian_whist/Trick.h>
-#include <romanian_whist/PlayerList.h>
 #include <romanian_whist/RoundType.h>
+#include <romanian_whist/Seat.h>
+#include <romanian_whist/Trick.h>
 
 #include <cstddef>
+#include <optional>
 #include <vector>
-#include <unordered_map>
 
 namespace romanian_whist
 {
-struct Bet
-{
-    unsigned int guess = 0;
-    unsigned int actual = 0;
-
-    // True only once setBet() has run for this player. setResult() writes
-    // into the same map entry (to record tricks won as the round is played)
-    // and must not be mistaken for a real bet by touching this - see
-    // hasBet().
-    bool guessSet = false;
-};
-
 class Round
 {
 private:
     std::vector<Trick> tricks;
-    std::unordered_map<std::string, Bet> bets;
+
+    // Indexed by seat, sized to the table at construction. Disengaged until
+    // that seat has bid.
+    std::vector<std::optional<unsigned int>> bets;
+
     Card* trump;
     unsigned int trickCount;
     RoundType type;
 
     // Who leads the next trick. Reassigned to each trick's winner as the round
     // plays out, so it stops identifying who opened the round after trick one.
-    PlayerList::iterator firstPlayer;
+    Seat leader;
 
     // Who led the round's first trick, fixed for the round's lifetime. This is
     // the one that determines bidding order.
-    PlayerList::iterator openingPlayer;
+    Seat opener;
 
 public:
-    Round(unsigned int _trickCount, PlayerList::iterator player, RoundType _type = RoundType::Normal);
+    // `_opener` must name one of the `seatCount` seats, or this throws
+    // std::out_of_range: it also seeds the leader, so an off-table opener
+    // would put the round's very first trick out of turn.
+    Round(unsigned int _trickCount, Seat _opener, unsigned int seatCount,
+          RoundType _type = RoundType::Normal);
+
+    // The trick must already have its winner set, to a seat at this table:
+    // that winner is the only record of who took it (see getTricksWon()), so
+    // a trick added without one is unscoreable. Throws std::logic_error and
+    // std::out_of_range respectively, and std::logic_error again once the
+    // round already holds the trickCount tricks it was dealt for.
     void addTrick(const Trick& trick);
-    void setBet(PlayerList::iterator player, unsigned int guess);
-    void setResult(PlayerList::iterator player, unsigned int wonTricks);
+    void setBet(Seat seat, unsigned int guess);
     void setTrumpCard(Card* card);
     Card* getTrumpCard();
     const Card* getTrumpCard() const;
     unsigned int getTrickCount() const;
-    void setFirstPlayer(PlayerList::iterator player);
 
-    // Note that both of these hand out a mutable iterator from a const Round.
-    // Tightening them to const_iterator would break the game loop, which needs
-    // a mutable player to deal to and to ask for a move.
-    PlayerList::iterator getFirstPlayer() const;
-    PlayerList::iterator getOpeningPlayer() const;
+    // Throws std::out_of_range for a seat that is not at this table, which
+    // would otherwise silently rotate the turn order at the next trick.
+    void setLeaderSeat(Seat seat);
+    Seat getLeaderSeat() const;
+    Seat getOpenerSeat() const;
 
     void setRoundType(RoundType _type);
     RoundType getRoundType() const;
 
     std::size_t getPlayedTrickCount() const;
 
-    // getBet() and getActual() return 0 for a player who has no entry, which is
-    // indistinguishable from a genuine bet of zero. Ask hasBet() to tell them
-    // apart - it is true only once setBet() has actually run for that player,
-    // regardless of whether setResult() has touched their entry too.
-    unsigned int getBet(const std::string& playerName) const;
-    unsigned int getActual(const std::string& playerName) const;
-    bool hasBet(const std::string& playerName) const;
+    // Disengaged until that seat has bid, which is what tells a genuine bid of
+    // zero apart from no bid at all.
+    std::optional<unsigned int> getBet(Seat seat) const;
+
+    // Counted from the tricks stored so far, rather than tracked alongside
+    // them: every completed trick is added with its winner, so this is already
+    // recorded and a second copy could only disagree with it. A trick in
+    // progress has not been added yet, so it is not counted until it is won.
+    unsigned int getTricksWon(Seat seat) const;
 };
 
 } // namespace romanian_whist

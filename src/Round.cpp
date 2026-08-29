@@ -1,31 +1,52 @@
 #include <romanian_whist/Round.h>
 
+#include <stdexcept>
+
 namespace romanian_whist
 {
-Round::Round(unsigned int _trickCount, 
-             PlayerList::iterator player,
-             RoundType _type) : trump(nullptr),
+Round::Round(unsigned int _trickCount,
+             Seat _opener,
+             unsigned int seatCount,
+             RoundType _type) : bets(seatCount),
+                                trump(nullptr),
                                 trickCount(_trickCount),
                                 type(_type),
-                                firstPlayer(player),
-                                openingPlayer(player)
-{}
+                                leader(_opener),
+                                opener(_opener)
+{
+    if(_opener.index >= seatCount)
+        throw std::out_of_range("Round::Round: opener seat out of range");
+}
 
 void Round::addTrick(const Trick &trick)
 {
+    // Tricks won are counted off the winners stored here, so a trick with no
+    // winner - or one naming a seat that is not at this table - would not be
+    // scored to anybody, and the round would quietly come up short. Reject it
+    // where it enters rather than let calculateScores() report a 0 that looks
+    // like a real result.
+    if(!trick.hasWinner())
+        throw std::logic_error("Round::addTrick: trick has no winner");
+
+    if(trick.getWinner().index >= bets.size())
+        throw std::out_of_range("Round::addTrick: winning seat out of range");
+
+    // A round is dealt for exactly trickCount tricks, and the results read off
+    // these (see getTricksWon()). One more would make the tricks won add up to
+    // more than were ever played, which nothing downstream is in a position to
+    // notice - calculateScores() would simply score the inflated total.
+    if(tricks.size() >= trickCount)
+        throw std::logic_error("Round::addTrick: round already has all its tricks");
+
     tricks.push_back(trick);
 }
 
-void Round::setBet(PlayerList::iterator player, unsigned int guess)
+void Round::setBet(Seat seat, unsigned int guess)
 {
-    Bet& bet = bets[player->getName()];
-    bet.guess = guess;
-    bet.guessSet = true;
-}
+    if(seat.index >= bets.size())
+        throw std::out_of_range("Round::setBet: seat out of range");
 
-void Round::setResult(PlayerList::iterator player, unsigned int wonTricks)
-{
-    bets[player->getName()].actual = wonTricks;
+    bets[seat.index] = guess;
 }
 
 void Round::setTrumpCard(Card *card)
@@ -48,19 +69,22 @@ unsigned int Round::getTrickCount() const
     return trickCount;
 }
 
-void Round::setFirstPlayer(PlayerList::iterator player)
+void Round::setLeaderSeat(Seat seat)
 {
-    firstPlayer = player;
+    if(seat.index >= bets.size())
+        throw std::out_of_range("Round::setLeaderSeat: seat out of range");
+
+    leader = seat;
 }
 
-PlayerList::iterator Round::getFirstPlayer() const
+Seat Round::getLeaderSeat() const
 {
-    return firstPlayer;
+    return leader;
 }
 
-PlayerList::iterator Round::getOpeningPlayer() const
+Seat Round::getOpenerSeat() const
 {
-    return openingPlayer;
+    return opener;
 }
 
 void Round::setRoundType(RoundType _type)
@@ -78,30 +102,28 @@ std::size_t Round::getPlayedTrickCount() const
     return tricks.size();
 }
 
-unsigned int Round::getBet(const std::string& playerName) const
+std::optional<unsigned int> Round::getBet(Seat seat) const
 {
-    auto it = bets.find(playerName);
-    if(it != bets.end())
-    {
-        return it->second.guess;
-    }
-    return 0;
+    if(seat.index >= bets.size())
+        throw std::out_of_range("Round::getBet: seat out of range");
+
+    return bets[seat.index];
 }
 
-unsigned int Round::getActual(const std::string& playerName) const
+unsigned int Round::getTricksWon(Seat seat) const
 {
-    auto it = bets.find(playerName);
-    if(it != bets.end())
-    {
-        return it->second.actual;
-    }
-    return 0;
-}
+    if(seat.index >= bets.size())
+        throw std::out_of_range("Round::getTricksWon: seat out of range");
 
-bool Round::hasBet(const std::string& playerName) const
-{
-    auto it = bets.find(playerName);
-    return it != bets.end() && it->second.guessSet;
+    unsigned int won = 0;
+
+    for(const Trick& trick : tricks)
+    {
+        if(trick.hasWinner() && trick.getWinner() == seat)
+            won++;
+    }
+
+    return won;
 }
 
 } // namespace romanian_whist
