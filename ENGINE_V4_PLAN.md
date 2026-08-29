@@ -476,10 +476,20 @@ nobody has checked against a real need. Either name the caller — a Qt bidding 
 `GET /game/{id}` payload are the plausible ones — or leave them out until one exists.
 
 **Removed from the public API** (all become private implementation details of `playRound()`):
-`shuffleDeck`, `dealCards`, `placeBet`, `setResult`, `addTrickToCurrentRound`,
-`determineTrickWinner`, `setFirstPlayerOfTheRound`, `completeCurrentRound`, `calculateScores`,
-`commitRoundScores`, `initializeScoreboard`, `initializeDeck`, `setStatus`,
-`getFirstPlayerOfTheRound`, `getNextPlayer`.
+`shuffleDeck`, `dealCards`, `placeBet`, `addTrickToCurrentRound`, `determineTrickWinner`,
+`setRoundLeaderSeat`, `completeCurrentRound`, `calculateScores`, `commitRoundScores`,
+`initializeScoreboard`, `initializeDeck`, `setStatus`, `getRoundLeaderSeat`, `getNextSeat`.
+
+**This list is written against the post-Phase-1 API.** Earlier drafts named `setResult`,
+`setFirstPlayerOfTheRound`, `getFirstPlayerOfTheRound` and `getNextPlayer`; the first no longer
+exists at all and the other three are the `Seat` names above.
+
+**`getPlayer(Seat)` goes with them, and it is the one that matters.** Phase 1 added it as a
+deliberate temporary: converting the accessors to `Seat` closed the only door handing out a
+non-const `Player&`, which a caller still driving the loop needs to reach the non-const
+`playCard()`. Once `playRound()` is that caller, nothing outside the engine has any business
+with a mutable `Player` — and leaving it reopens the const-correctness hole §3.1 closes,
+permanently and silently, because nothing fails when an accessor merely survives.
 
 `Player::playCard` and `Player::getBet` become private with `friend class GameEngine`, so no
 client can reach past the engine into a player again.
@@ -794,7 +804,7 @@ change the engine's public API, so the terminal client stops compiling the momen
 | Phase | Terminal work | Files |
 |---|---|---|
 | 0 — testability | **One narrow exception, otherwise none as planned.** `SetupWizard`'s custom-setup path let a spectator pick "1 bot" (no human seat), which `initializeDeck`'s new player-count guards turned from a degenerate game into a thrown exception; fixed by raising the minimum to 2 bots when spectating. Nothing else needed to change for the terminal to build and play. | `SetupWizard.cpp`, `engine-v4` branch, commit `949fee0` |
-| 1 — seats | Mechanical but broad. **Engine done, this outstanding** — the client does not currently build against the engine. `Seat` is a struct with an explicit constructor (§3.1), so a seat built from a loop index is `Seat{i}` and an index taken from a seat is `seat.index` | `TerminalRomanianWhist.cpp` (every iterator use, `seatOf`, both `setResult` call sites; `Player` access goes through `GameEngine::getPlayer(Seat)`; `trick.getPlayedCards()` → `trick.cardsInPlayOrder()` where a flat card list is wanted), `GameView.cpp` (`hasBet`/`getBet` by name → by seat, `getActual` → `getTricksWon`) |
+| 1 — seats | **Done.** Narrower than predicted: **two files**, since `ConsoleMoveProvider`, `Renderer`, `CardFormat`, `SetupWizard` and `Pacer` touch only `BetContext`/`PlayContext`/`Card`, none of which this phase changed. `Seat` is a struct with an explicit constructor (§3.1), so a seat built from a loop index is `Seat{i}` and an index taken from a seat is `seat.index` | `TerminalRomanianWhist.{h,cpp}` (every iterator use; `seatOf`, both `setResult` call sites and the `tricksWon` vector all deleted; `Player` access goes through `GameEngine::getPlayer(Seat)`; `trick.getPlayedCards()` → `trick.cardsInPlayOrder()` where a flat card list is wanted), `GameView.cpp` (`hasBet`/`getBet` by name → by seat, `getActual` → `getTricksWon`) |
 | 2 — engine owns the loop | **Substantial rewrite** | `TerminalRomanianWhist.{h,cpp}` becomes observer callbacks; `markCurrentlyWinning` switches to `getCurrentTrickLeader()`; `GameView.cpp` loses `openingSeat` and rebuilds `view.table` from `getCurrentTrick()`'s seats; `Pacer` calls move into the callbacks. `startGame()` keeps its v3 setup sequence this phase — §3.7 shows the post-Phase-3 shape, Phase 2 step 9 the interim one |
 | 3 — setup | Small | `applySetup()` → builds a `GameSetup`; `Renderer::drawGameOver` takes `std::vector<Standing>`; the scoreboard rows move off `getPlayerRoundScores()` onto `getRoundScore(Seat)` / `getTotalScore(Seat)` |
 | 4 — cards by value | Moderate | `ConsoleMoveProvider.cpp` (`layOutHand`, index-returning `playCard`), `CardFormat.{h,cpp}`, `GameView.cpp` |
