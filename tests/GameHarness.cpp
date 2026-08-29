@@ -86,6 +86,10 @@ GameEngine playFullGame(GameStructure structure,
 
             const Seat winner = game.determineTrickWinner(trick);
             trick.setWinner(winner);
+
+            if(hooks.onTrickWon)
+                hooks.onTrickWon(winner);
+
             game.addTrickToCurrentRound(trick);
             game.setRoundLeaderSeat(winner);
         }

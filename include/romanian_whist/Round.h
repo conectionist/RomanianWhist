@@ -33,13 +33,17 @@ private:
     Seat opener;
 
 public:
+    // `_opener` must name one of the `seatCount` seats, or this throws
+    // std::out_of_range: it also seeds the leader, so an off-table opener
+    // would put the round's very first trick out of turn.
     Round(unsigned int _trickCount, Seat _opener, unsigned int seatCount,
           RoundType _type = RoundType::Normal);
 
     // The trick must already have its winner set, to a seat at this table:
     // that winner is the only record of who took it (see getTricksWon()), so
     // a trick added without one is unscoreable. Throws std::logic_error and
-    // std::out_of_range respectively.
+    // std::out_of_range respectively, and std::logic_error again once the
+    // round already holds the trickCount tricks it was dealt for.
     void addTrick(const Trick& trick);
     void setBet(Seat seat, unsigned int guess);
     void setTrumpCard(Card* card);
@@ -47,6 +51,8 @@ public:
     const Card* getTrumpCard() const;
     unsigned int getTrickCount() const;
 
+    // Throws std::out_of_range for a seat that is not at this table, which
+    // would otherwise silently rotate the turn order at the next trick.
     void setLeaderSeat(Seat seat);
     Seat getLeaderSeat() const;
     Seat getOpenerSeat() const;

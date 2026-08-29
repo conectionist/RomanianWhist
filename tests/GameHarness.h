@@ -28,6 +28,11 @@ struct GameHooks
     std::function<void(const std::vector<Card*>& handBeforePlay, Card* trump,
                         const Suit* leadSuit, Card* playedCard)> onBeforeCardPlayed;
 
+    // Fires as each trick is won, after determineTrickWinner() has named the
+    // winner and before the trick is handed to the round. Lets a test keep its
+    // own tally of who took what, to hold the round's own results against.
+    std::function<void(Seat winner)> onTrickWon;
+
     // Fires once per round, after calculateScores() and before
     // completeCurrentRound() advances the index - while the round's bets and
     // results are still live and its index hasn't moved yet.

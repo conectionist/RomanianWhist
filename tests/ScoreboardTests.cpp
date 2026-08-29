@@ -303,3 +303,91 @@ TEST_CASE("Round::addTrick requires a winner that is at the table", "[round]")
     REQUIRE(round.getPlayedTrickCount() == 1);
     REQUIRE(round.getTricksWon(Seat{2}) == 1);
 }
+
+TEST_CASE("Round::addTrick stops at the trick count", "[round]")
+{
+    Round round(2, Seat{0}, 3);
+
+    Trick first;
+    first.setWinner(Seat{0});
+    round.addTrick(first);
+
+    Trick second;
+    second.setWinner(Seat{1});
+    round.addTrick(second);
+
+    // A third would make the tricks won add up to more than the round was ever
+    // dealt for, and nothing downstream is placed to notice: calculateScores()
+    // would score the inflated total as a real result.
+    Trick third;
+    third.setWinner(Seat{2});
+    REQUIRE_THROWS_AS(round.addTrick(third), std::logic_error);
+
+    REQUIRE(round.getPlayedTrickCount() == 2);
+    REQUIRE(round.getTricksWon(Seat{2}) == 0);
+}
+
+TEST_CASE("Round rejects a leader that is not at the table", "[round]")
+{
+    Round round(1, Seat{0}, 3);
+
+    // Stored unchecked, this would only surface once the turn order it drives
+    // reached a seat that does not exist.
+    REQUIRE_THROWS_AS(round.setLeaderSeat(Seat{3}), std::out_of_range);
+    REQUIRE(round.getLeaderSeat() == Seat{0});
+
+    round.setLeaderSeat(Seat{2});
+    REQUIRE(round.getLeaderSeat() == Seat{2});
+
+    // The opener seeds the leader, so it is the same mistake one step earlier.
+    REQUIRE_THROWS_AS(Round(1, Seat{3}, 3), std::out_of_range);
+}
+
+TEST_CASE("Round::calculateScores leaves scores untouched when a seat has not bid", "[scoreboard]")
+{
+    PlayerList players;
+    players.addPlayer("A", dummyProvider());
+    players.addPlayer("B", dummyProvider());
+    players.addPlayer("C", dummyProvider());
+
+    Scoreboard scoreboard;
+    scoreboard.initialize(GameStructure::S_181, false, false, players);
+
+    // Land on a 2-trick round: the 1-trick rounds are excluded from streaks,
+    // and this checks the streak counters too.
+    scoreboard.incrementCurrentRound();
+    scoreboard.incrementCurrentRound();
+    scoreboard.incrementCurrentRound();
+    REQUIRE(scoreboard.getCurrentRound().getTrickCount() == 2);
+
+    // Seat 2 never bids.
+    scoreboard.getCurrentRound().setBet(Seat{0}, 0);
+    scoreboard.getCurrentRound().setBet(Seat{1}, 0);
+
+    REQUIRE_THROWS_AS(scoreboard.calculateScores(players), std::logic_error);
+
+    // Scoring is all or nothing: the earlier seats must not have been credited,
+    // or a caller that caught this and retried would credit them twice.
+    for(unsigned int i = 0 ; i < players.size() ; i++)
+    {
+        REQUIRE(players.at(i).getTotalScore() == 0);
+        REQUIRE(players.at(i).getConsecutiveWins() == 0);
+        REQUIRE(players.at(i).getConsecutiveLosses() == 0);
+    }
+}
+
+TEST_CASE("PlayerList::nextSeat rejects a seat that is not at the table", "[player-list]")
+{
+    PlayerList players;
+
+    // Wrapping a bad seat into range would hand back a plausible neighbour and
+    // lose the mistake - including on an empty table, where there is none.
+    REQUIRE_THROWS_AS(players.nextSeat(Seat{0}), std::out_of_range);
+
+    players.addPlayer("A", dummyProvider());
+    players.addPlayer("B", dummyProvider());
+
+    REQUIRE(players.nextSeat(Seat{0}) == Seat{1});
+    REQUIRE(players.nextSeat(Seat{1}) == Seat{0});
+    REQUIRE_THROWS_AS(players.nextSeat(Seat{2}), std::out_of_range);
+}

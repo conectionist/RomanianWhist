@@ -118,31 +118,45 @@ unsigned int Scoreboard::getCurrentRoundIndex() const
 void Scoreboard::calculateScores(PlayerList& players)
 {
     Round& currentRound = getCurrentRound();
-    
+
+    // Collect every bid before crediting anybody. Scoring only ever runs once
+    // betting is complete, so a seat with no bid means the loop skipped a
+    // bidder. Scoring that as a bid of zero would be a plausible-looking number
+    // covering a real bug, so say so instead - and throw rather than assert,
+    // which compiles out of a release build.
+    //
+    // Throwing from the scoring loop below would leave the round half scored,
+    // with the seats before the gap already credited and their streaks already
+    // advanced, so a caller that caught and retried would credit them twice.
+    // Gathering the bids first makes this all or nothing.
+    std::vector<unsigned int> bids;
+    bids.reserve(players.size());
+
+    for(unsigned int i = 0 ; i < players.size() ; i++)
+    {
+        const std::optional<unsigned int> bid = currentRound.getBet(Seat{i});
+
+        if(!bid)
+            throw std::logic_error("Scoreboard::calculateScores: seat has not bid");
+
+        bids.push_back(*bid);
+    }
+
     for(unsigned int i = 0 ; i < players.size() ; i++)
     {
         const Seat seat{i};
         Player& player = players.at(seat.index);
 
-        // Scoring only ever runs once betting is complete, so a seat with no
-        // bid means the loop skipped a bidder. Scoring that as a bid of zero
-        // would be a plausible-looking number covering a real bug, so say so
-        // instead - and throw rather than assert, which compiles out of a
-        // release build.
-        const std::optional<unsigned int> bid = currentRound.getBet(seat);
-
-        if(!bid)
-            throw std::logic_error("Scoreboard::calculateScores: seat has not bid");
-
+        const unsigned int bid = bids[i];
         const unsigned int actual = currentRound.getTricksWon(seat);
 
-        int roundScore = calculateRoundScore(*bid, actual);
+        int roundScore = calculateRoundScore(bid, actual);
         player.addToScore(roundScore);
         
         // Update streak counters
         if(shouldCountForStreaks(currentRound))
         {
-            if(*bid == actual)
+            if(bid == actual)
             {
                 player.incrementConsecutiveWins();
                 player.resetConsecutiveLosses();

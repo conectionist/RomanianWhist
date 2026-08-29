@@ -5,27 +5,33 @@
 #include <romanian_whist/Seat.h>
 
 #include <cstddef>
+#include <deque>
 #include <memory>
 #include <string>
-#include <vector>
 
 namespace romanian_whist
 {
 class PlayerList
 {
 private:
-    // A vector, not a list: Seat is the public way to name a player, so nothing
-    // outside holds an iterator across a mutation any more, and at() stops
-    // being an O(n) walk. Every player is added before the deck and the round
-    // schedule are built (GameEngine::addPlayer throws afterwards), so the
-    // reallocation that growing this does cannot surprise anything that has
-    // already recorded a seat.
-    std::vector<Player> players;
+    // A deque, not a list or a vector. Seat is the public way to name a player,
+    // so nothing outside needs a list's O(n) walk to reach one - but at() and
+    // operator[] still hand out Player& (and GameEngine::getPlayer() passes one
+    // straight through), and a vector's reallocation on the next addPlayer()
+    // would leave every such reference dangling. A deque indexes in O(1) like a
+    // vector and keeps references and pointers to the players already in it
+    // valid across addPlayer(), like a list.
+    //
+    // Its iterators are the one thing addPlayer() still invalidates. Nothing
+    // holds one across a call: begin()/end() exist for immediate traversal of
+    // the whole table, and by the time a game is under way addPlayer() throws
+    // anyway (the deck and the round schedule are sized to the player count).
+    std::deque<Player> players;
 
 public:
-    using iterator = std::vector<Player>::iterator;
-    using const_iterator = std::vector<Player>::const_iterator;
-    using size_type = std::vector<Player>::size_type;
+    using iterator = std::deque<Player>::iterator;
+    using const_iterator = std::deque<Player>::const_iterator;
+    using size_type = std::deque<Player>::size_type;
 
     PlayerList() = default;
 
@@ -40,7 +46,10 @@ public:
     Player& operator[](size_type index);
     const Player& operator[](size_type index) const;
 
-    // The seat after this one, wrapping round the table.
+    // The seat after this one, wrapping round the table. Throws
+    // std::out_of_range for a seat that is not at this table, and for any seat
+    // at all while the table is empty: wrapping such a seat into range would
+    // hand back a valid-looking neighbour and lose the mistake.
     Seat nextSeat(Seat seat) const;
 
     iterator begin();

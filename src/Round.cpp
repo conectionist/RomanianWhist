@@ -13,7 +13,10 @@ Round::Round(unsigned int _trickCount,
                                 type(_type),
                                 leader(_opener),
                                 opener(_opener)
-{}
+{
+    if(_opener.index >= seatCount)
+        throw std::out_of_range("Round::Round: opener seat out of range");
+}
 
 void Round::addTrick(const Trick &trick)
 {
@@ -27,6 +30,13 @@ void Round::addTrick(const Trick &trick)
 
     if(trick.getWinner().index >= bets.size())
         throw std::out_of_range("Round::addTrick: winning seat out of range");
+
+    // A round is dealt for exactly trickCount tricks, and the results read off
+    // these (see getTricksWon()). One more would make the tricks won add up to
+    // more than were ever played, which nothing downstream is in a position to
+    // notice - calculateScores() would simply score the inflated total.
+    if(tricks.size() >= trickCount)
+        throw std::logic_error("Round::addTrick: round already has all its tricks");
 
     tricks.push_back(trick);
 }
@@ -61,6 +71,9 @@ unsigned int Round::getTrickCount() const
 
 void Round::setLeaderSeat(Seat seat)
 {
+    if(seat.index >= bets.size())
+        throw std::out_of_range("Round::setLeaderSeat: seat out of range");
+
     leader = seat;
 }
 

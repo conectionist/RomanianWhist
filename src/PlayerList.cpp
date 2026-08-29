@@ -48,8 +48,8 @@ const Player& PlayerList::operator[](size_type index) const
 
 Seat PlayerList::nextSeat(Seat seat) const
 {
-    if(players.empty())
-        return Seat{0};
+    if(seat.index >= players.size())
+        throw std::out_of_range("PlayerList::nextSeat: seat out of range");
 
     return Seat{static_cast<unsigned int>((seat.index + 1) % players.size())};
 }
