@@ -133,14 +133,31 @@ TEST_CASE("GameEngine::addPlayer rejects duplicate names", "[game-engine]")
     REQUIRE(engine.getPlayerCount() == 1);
 }
 
-TEST_CASE("GameEngine::initializeDeck does not duplicate cards on a second call", "[game-engine]")
+TEST_CASE("GameEngine::initializeDeck rejects a second call", "[game-engine]")
 {
+    // A second call used to be made "safe" by clearing and rebuilding the
+    // deck, but that dangles every Card* already handed out by a deal (the
+    // round's trump, any recorded tricks, every player's hand) - rejecting
+    // it outright is the only thing that is actually safe.
     GameEngine engine;
     addPlayers(engine, 4);
     engine.initializeDeck(4);
+
+    REQUIRE_THROWS_AS(engine.initializeDeck(4), std::logic_error);
+    REQUIRE(engine.getDeck().size() == 32);
+}
+
+TEST_CASE("GameEngine::addPlayer rejects a player added after initializeDeck", "[game-engine]")
+{
+    // initializeDeck()'s playerCount-matches-players.size() guard only
+    // checks at the moment it runs; a seat added afterwards would silently
+    // invalidate it again.
+    GameEngine engine;
+    addPlayers(engine, 4);
     engine.initializeDeck(4);
 
-    REQUIRE(engine.getDeck().size() == 32);
+    REQUIRE_THROWS_AS(engine.addPlayer("extra", dummyProvider()), std::logic_error);
+    REQUIRE(engine.getPlayerCount() == 4);
 }
 
 TEST_CASE("GameEngine::initializeDeck rejects a playerCount that doesn't match the players added", "[game-engine]")

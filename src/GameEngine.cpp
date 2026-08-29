@@ -15,6 +15,13 @@ GameEngine::GameEngine(std::uint32_t seed) : status(GameStatus::NotStarted), gen
 
 void GameEngine::addPlayer(const std::string &name, std::unique_ptr<IMoveProvider> moveProvider)
 {
+    // Once the deck is built, its size is fixed to the player count at that
+    // moment - a seat added afterwards would leave dealCards() indexing
+    // past the end of it (initializeDeck()'s own guard only checks at the
+    // point it runs, not retroactively).
+    if(deckInitialized)
+        throw std::logic_error("cannot add a player after initializeDeck() has been called");
+
     // Round::bets is keyed by name (Round.h), so two seats sharing a name
     // would silently share one bet and one trick count. Reject it here
     // rather than let it corrupt scoring later.
@@ -45,16 +52,21 @@ void GameEngine::initializeDeck(unsigned int playerCount)
     if(playerCount != players.size())
         throw std::invalid_argument("playerCount must match the number of players added");
 
-    // Deck::addCard only ever appends, so a second call without this would
-    // leave two copies of every card in play.
-    deck = Deck{};
+    // Deck::addCard only ever appends, and by the time a deal has happened
+    // every dealt Card* points into this exact buffer - rebuilding it would
+    // dangle every one of them rather than just duplicate cards. Reject a
+    // second call outright instead of trying to make it safe.
+    if(deckInitialized)
+        throw std::logic_error("initializeDeck() has already been called");
 
     for(int s = 0 ; s < 4 ; s++)
         for(int r = 1 + (6 - playerCount) * 2 ; r < 13 ; r++)
         {
             Card card(static_cast<Rank>(r), static_cast<Suit>(s));
             deck.addCard(std::move(card));
-        }   
+        }
+
+    deckInitialized = true;
 }
 
 void GameEngine::setStatus(GameStatus _status)

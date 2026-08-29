@@ -30,16 +30,34 @@ private:
     GameStatus status;
     std::mt19937 generator;
 
+    // True once initializeDeck() has built the deck. addPlayer() and
+    // initializeDeck() both consult this - see their declarations below.
+    bool deckInitialized = false;
+
 public:
     GameEngine();
 
-    // Seeds the shuffle generator directly, for a reproducible game.
+    // Seeds the shuffle generator directly, for a reproducible deal. This
+    // is the only thing the seed reaches: a move provider added afterwards
+    // is still free to use its own randomness (RandomCardStrategy's default
+    // constructor, for instance, still draws from std::random_device), so a
+    // fully reproducible game additionally requires seeding every such
+    // provider.
     explicit GameEngine(std::uint32_t seed);
 
+    // Throws std::logic_error once initializeDeck() has been called - a
+    // seat added afterwards would leave the already-built deck sized for
+    // the wrong player count (see initializeDeck()).
     void addPlayer(const std::string& name, std::unique_ptr<IMoveProvider> moveProvider);
-    void initializeScoreboard(const GameStructure& structure, 
-                              bool endWithForeheadAndHidden, 
+    void initializeScoreboard(const GameStructure& structure,
+                              bool endWithForeheadAndHidden,
                               bool all1GamesAreForehead);
+
+    // Builds the deck for playerCount players (2..6), which must match the
+    // number of players already added. Callable only once: a second call is
+    // rejected with std::logic_error rather than rebuilt, since a rebuild
+    // after dealCards() has already handed out Card* into the old deck
+    // would dangle every hand, the round's trump and any recorded tricks.
     void initializeDeck(unsigned int playerCount);
     void setStatus(GameStatus _status);
     bool isInProgress() const;
