@@ -18,7 +18,9 @@ void Round::addTrick(const Trick &trick)
 
 void Round::setBet(PlayerList::iterator player, unsigned int guess)
 {
-    bets[player->getName()].guess = guess;
+    Bet& bet = bets[player->getName()];
+    bet.guess = guess;
+    bet.guessSet = true;
 }
 
 void Round::setResult(PlayerList::iterator player, unsigned int wonTricks)
@@ -98,7 +100,8 @@ unsigned int Round::getActual(const std::string& playerName) const
 
 bool Round::hasBet(const std::string& playerName) const
 {
-    return bets.find(playerName) != bets.end();
+    auto it = bets.find(playerName);
+    return it != bets.end() && it->second.guessSet;
 }
 
 } // namespace romanian_whist

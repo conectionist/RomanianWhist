@@ -21,6 +21,9 @@ jobs:
       - name: Build
         run: cmake --build --preset release
 
+      - name: Test
+        run: ctest --preset release --output-on-failure --no-tests=error
+
   build-windows:
     name: Build (Windows)
     runs-on: windows-latest
@@ -33,6 +36,9 @@ jobs:
       - name: Build
         run: cmake --build --preset release
 
+      - name: Test
+        run: ctest --preset release --output-on-failure --no-tests=error
+
   build-macos:
     name: Build (macOS)
     runs-on: macos-latest
@@ -44,3 +50,6 @@ jobs:
 
       - name: Build
         run: cmake --build --preset release
+
+      - name: Test
+        run: ctest --preset release --output-on-failure --no-tests=error

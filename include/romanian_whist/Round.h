@@ -13,8 +13,14 @@ namespace romanian_whist
 {
 struct Bet
 {
-    unsigned int guess;
-    unsigned int actual;
+    unsigned int guess = 0;
+    unsigned int actual = 0;
+
+    // True only once setBet() has run for this player. setResult() writes
+    // into the same map entry (to record tricks won as the round is played)
+    // and must not be mistaken for a real bet by touching this - see
+    // hasBet().
+    bool guessSet = false;
 };
 
 class Round
@@ -58,7 +64,8 @@ public:
 
     // getBet() and getActual() return 0 for a player who has no entry, which is
     // indistinguishable from a genuine bet of zero. Ask hasBet() to tell them
-    // apart.
+    // apart - it is true only once setBet() has actually run for that player,
+    // regardless of whether setResult() has touched their entry too.
     unsigned int getBet(const std::string& playerName) const;
     unsigned int getActual(const std::string& playerName) const;
     bool hasBet(const std::string& playerName) const;

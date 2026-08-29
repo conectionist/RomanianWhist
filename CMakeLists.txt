@@ -16,6 +16,7 @@ add_library(romanian_whist_engine STATIC
     src/Scoreboard.cpp
     src/GameEngine.cpp
     src/AiMoveProvider.cpp
+    src/detail/RandomDraw.cpp
     src/strategies/FirstCardStrategy.cpp
     src/strategies/RandomCardStrategy.cpp
     src/strategies/TrickHeuristics.cpp
@@ -39,3 +40,10 @@ target_include_directories(romanian_whist_engine PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
+
+option(WHIST_BUILD_TESTS "Build the engine's test suite" ${PROJECT_IS_TOP_LEVEL})
+
+if(WHIST_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
