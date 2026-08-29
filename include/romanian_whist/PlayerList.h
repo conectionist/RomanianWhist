@@ -2,9 +2,9 @@
 #define PLAYER_LIST_H
 
 #include <romanian_whist/Player.h>
+#include <romanian_whist/Seat.h>
 
 #include <cstddef>
-#include <list>
 #include <memory>
 #include <string>
 #include <vector>
@@ -14,12 +14,18 @@ namespace romanian_whist
 class PlayerList
 {
 private:
-    std::list<Player> players;
+    // A vector, not a list: Seat is the public way to name a player, so nothing
+    // outside holds an iterator across a mutation any more, and at() stops
+    // being an O(n) walk. Every player is added before the deck and the round
+    // schedule are built (GameEngine::addPlayer throws afterwards), so the
+    // reallocation that growing this does cannot surprise anything that has
+    // already recorded a seat.
+    std::vector<Player> players;
 
 public:
-    using iterator = std::list<Player>::iterator;
-    using const_iterator = std::list<Player>::const_iterator;
-    using size_type = std::list<Player>::size_type;
+    using iterator = std::vector<Player>::iterator;
+    using const_iterator = std::vector<Player>::const_iterator;
+    using size_type = std::vector<Player>::size_type;
 
     PlayerList() = default;
 
@@ -34,6 +40,9 @@ public:
     Player& operator[](size_type index);
     const Player& operator[](size_type index) const;
 
+    // The seat after this one, wrapping round the table.
+    Seat nextSeat(Seat seat) const;
+
     iterator begin();
     const_iterator begin() const;
     const_iterator cbegin() const;
@@ -41,15 +50,6 @@ public:
     iterator end();
     const_iterator end() const;
     const_iterator cend() const;
-
-    iterator first();
-    const_iterator first() const;
-
-    iterator next(iterator current);
-    const_iterator next(const_iterator current) const;
-
-    iterator advanceCircular(iterator current, size_type steps);
-    const_iterator advanceCircular(const_iterator current, size_type steps) const;
 };
 
 } // namespace romanian_whist

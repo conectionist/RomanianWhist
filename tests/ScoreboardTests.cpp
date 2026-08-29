@@ -3,6 +3,7 @@
 #include <romanian_whist/AiMoveProvider.h>
 #include <romanian_whist/PlayerList.h>
 #include <romanian_whist/RoundType.h>
+#include <romanian_whist/Seat.h>
 #include <romanian_whist/Scoreboard.h>
 #include <romanian_whist/strategies/FirstCardStrategy.h>
 
@@ -22,6 +23,19 @@ PlayerList buildPlayers(unsigned int count)
         players.addPlayer("P" + std::to_string(i), dummyProvider());
     return players;
 }
+
+// Tricks won are counted off the tricks a round has stored, so a scoring test
+// has to award real ones. Only the winner is read, so the tricks need no cards
+// in them.
+void awardTricks(Round& round, Seat winner, unsigned int count)
+{
+    for(unsigned int i = 0 ; i < count ; i++)
+    {
+        Trick trick;
+        trick.setWinner(winner);
+        round.addTrick(trick);
+    }
+}
 }
 
 TEST_CASE("Scoreboard round scoring", "[scoreboard]")
@@ -30,14 +44,20 @@ TEST_CASE("Scoreboard round scoring", "[scoreboard]")
     Scoreboard scoreboard;
     scoreboard.initialize(GameStructure::S_181, false, false, players);
 
-    auto a = players.first();
-    auto b = players.next(a);
+    const Seat a = 0;
+    const Seat b = 1;
+
+    // Skip the two 1-trick rounds the 2-player schedule opens with: both seats
+    // take a trick here, which only a round of at least two can hold.
+    scoreboard.incrementCurrentRound();
+    scoreboard.incrementCurrentRound();
+    REQUIRE(scoreboard.getCurrentRound().getTrickCount() == 2);
 
     Round& round = scoreboard.getCurrentRound();
     round.setBet(a, 1);
-    round.setResult(a, 1);   // exact hit
+    awardTricks(round, a, 1);   // exact hit
     round.setBet(b, 0);
-    round.setResult(b, 1);   // miss by 1
+    awardTricks(round, b, 1);   // miss by 1
 
     scoreboard.calculateScores(players);
 
@@ -51,7 +71,8 @@ TEST_CASE("Scoreboard streaks", "[scoreboard]")
     Scoreboard scoreboard;
     scoreboard.initialize(GameStructure::S_181, false, false, players);
 
-    auto a = players.first();
+    const Seat a = 0;
+    const Seat b = 1;
 
     SECTION("a 1-trick round neither breaks nor extends a streak")
     {
@@ -59,7 +80,8 @@ TEST_CASE("Scoreboard streaks", "[scoreboard]")
 
         Round& round = scoreboard.getCurrentRound();
         round.setBet(a, 0);
-        round.setResult(a, 0);   // exact hit
+        round.setBet(b, 1);
+        awardTricks(round, b, 1);   // a takes nothing: an exact hit on 0
 
         scoreboard.calculateScores(players);
 
@@ -83,7 +105,8 @@ TEST_CASE("Scoreboard streaks", "[scoreboard]")
         {
             Round& round = scoreboard.getCurrentRound();
             round.setBet(a, 0);
-            round.setResult(a, 0);   // exact hit every round
+            round.setBet(b, 2);
+            awardTricks(round, b, 2);   // a takes nothing: an exact hit every round
 
             scoreboard.calculateScores(players);
             scoreboard.commitRoundScores(players);
@@ -112,7 +135,9 @@ TEST_CASE("Scoreboard streaks", "[scoreboard]")
         {
             Round& round = scoreboard.getCurrentRound();
             round.setBet(a, 0);
-            round.setResult(a, 1);   // miss by 1, every round
+            round.setBet(b, 1);
+            awardTricks(round, a, 1);   // a bid 0 and took 1: a miss, every round
+            awardTricks(round, b, 1);
 
             scoreboard.calculateScores(players);
             scoreboard.commitRoundScores(players);
@@ -207,14 +232,6 @@ TEST_CASE("Scoreboard opening seat advances by one seat per round", "[scoreboard
     const unsigned int n = 3;
     PlayerList players = buildPlayers(n);
 
-    auto seatOfPlayer = [&players](PlayerList::const_iterator it)
-    {
-        for(unsigned int i = 0 ; i < players.size() ; i++)
-            if(&players.at(i) == &*it)
-                return i;
-        return 0u;
-    };
-
     Scoreboard scoreboard;
     scoreboard.initialize(GameStructure::S_181, false, false, players);
 
@@ -222,7 +239,7 @@ TEST_CASE("Scoreboard opening seat advances by one seat per round", "[scoreboard
     const unsigned int roundCount = scoreboard.getRoundCount();
     for(unsigned int i = 0 ; i < roundCount ; i++)
     {
-        REQUIRE(seatOfPlayer(scoreboard.getCurrentRound().getOpeningPlayer()) == expectedSeat);
+        REQUIRE(scoreboard.getCurrentRound().getOpenerSeat() == expectedSeat);
         expectedSeat = (expectedSeat + 1) % n;
         if(i + 1 < roundCount)
             scoreboard.incrementCurrentRound();

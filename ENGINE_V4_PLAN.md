@@ -774,7 +774,7 @@ change the engine's public API, so the terminal client stops compiling the momen
 | Phase | Terminal work | Files |
 |---|---|---|
 | 0 — testability | **One narrow exception, otherwise none as planned.** `SetupWizard`'s custom-setup path let a spectator pick "1 bot" (no human seat), which `initializeDeck`'s new player-count guards turned from a degenerate game into a thrown exception; fixed by raising the minimum to 2 bots when spectating. Nothing else needed to change for the terminal to build and play. | `SetupWizard.cpp`, `engine-v4` branch, commit `949fee0` |
-| 1 — seats | Mechanical but broad | `TerminalRomanianWhist.cpp` (every iterator use, `seatOf`, both `setResult` call sites), `GameView.cpp` (`hasBet`/`getBet` by name → by seat, `getActual` → `getTricksWon`) |
+| 1 — seats | Mechanical but broad. **Engine done, this outstanding** — the client does not currently build against the engine | `TerminalRomanianWhist.cpp` (every iterator use, `seatOf`, both `setResult` call sites; `Player` access goes through `GameEngine::getPlayer(Seat)`; `trick.getPlayedCards()` → `trick.cardsInPlayOrder()` where a flat card list is wanted), `GameView.cpp` (`hasBet`/`getBet` by name → by seat, `getActual` → `getTricksWon`) |
 | 2 — engine owns the loop | **Substantial rewrite** | `TerminalRomanianWhist.{h,cpp}` becomes observer callbacks; `markCurrentlyWinning` switches to `getCurrentTrickLeader()`; `GameView.cpp` loses `openingSeat` and rebuilds `view.table` from `getCurrentTrick()`'s seats; `Pacer` calls move into the callbacks. `startGame()` keeps its v3 setup sequence this phase — §3.7 shows the post-Phase-3 shape, Phase 2 step 9 the interim one |
 | 3 — setup | Small | `applySetup()` → builds a `GameSetup`; `Renderer::drawGameOver` takes `std::vector<Standing>`; the scoreboard rows move off `getPlayerRoundScores()` onto `getRoundScore(Seat)` / `getTotalScore(Seat)` |
 | 4 — cards by value | Moderate | `ConsoleMoveProvider.cpp` (`layOutHand`, index-returning `playCard`), `CardFormat.{h,cpp}`, `GameView.cpp` |
@@ -820,7 +820,8 @@ around. Starting it before Phase 3 lands means writing code twice.
 Each phase ends with the full test suite green and the terminal client playable. **Do not
 proceed to the next phase until both hold** — see §4 for what "playable" requires.
 
-**Progress: Phase 0 done. Phases 1–6 not started — Phase 1 is next.**
+**Progress: Phase 0 done. Phase 1 done in the engine; its terminal migration is outstanding,
+so the client does not build against the current engine. Phases 2–6 not started.**
 
 ### Phase 0 — Make the engine testable, then pin its behaviour [DONE]
 
@@ -1042,6 +1043,9 @@ explores the rest. Over a few thousand seeded games, assert the invariants:
 - no player ever plays a card `CardValidator::getLegalCards` did not offer;
 - no bid ever equals `getForbiddenBet()`, and no bid exceeds the trick count;
 - tricks won across the seats always sum to the round's trick count.
+  *(Phase 1 note: results are now counted off the round's stored tricks, so this sum only
+  recounts them. The test asserts `getPlayedTrickCount() == getCurrentRoundTrickCount()`
+  instead — that the round played out as many tricks as it was dealt for.)*
 
 This is the net for exactly the class of bug Phase 2 can introduce and a golden cannot catch.
 
@@ -1058,7 +1062,7 @@ with the seed CI printed.
 
 ---
 
-### Phase 1 — Seats and the round data model [NOT STARTED]
+### Phase 1 — Seats and the round data model [DONE — engine only]
 
 Mechanical apart from step 6, which forces one design decision — no behaviour change either way.
 The golden tests must produce byte-identical scores.
@@ -1126,6 +1130,42 @@ The golden tests must produce byte-identical scores.
 > and without it a reviewer may read the whole phase as cosmetic.
 
 **Verify:** golden scores unchanged; terminal plays a full game.
+
+#### What implementing it found, beyond the checklist above
+
+The engine half landed as written and the golden scores did not move. Five things the
+checklist did not account for:
+
+- **`Round` had no way to size its bets vector.** Step 2 indexes `bets` by seat but the
+  constructor never learned the table size. It now takes a `seatCount`, passed by
+  `Scoreboard::initialize` from `players.size()`.
+- **Step 1 closes the only mutable door into `Player`.** `getFirstPlayerOfTheRound()` and
+  `getNextPlayer()` were the sole accessors handing out a non-const `Player&`, and that is how a
+  caller reaches the non-const `playCard()`. A `Seat` carries no access — which is the point —
+  but the client and the test harness still drive the loop until Phase 2. Bridged with
+  `Player& GameEngine::getPlayer(Seat)`, commented as a Phase 2 casualty. **Phase 2 must delete
+  it**, or the hole §3.1 closes reopens permanently.
+- **Step 4's "assert the optional is engaged" is a `throw`, not an `assert`.** Phase 0 already
+  had to fix a guard that compiled out of a release build (`d93e355`); an `assert` here would
+  repeat that. It also broke three existing tests that bid for only one of two seats — see below.
+- **Step 8's "three call sites" in the terminal is four.** `GameView.cpp:50`'s
+  `round.hasBet(seat.name)` goes with the others, folding into `getBet(seat).has_value()`.
+  §4's table had this right; the step list did not.
+- **`determineTrickWinner`'s leader argument becomes dead**, so it was dropped and the method
+  made `const`. It now throws on a trick with no cards at all, where `advanceCircular(leader, 0)`
+  used to return the leader. It still ranks a *partly played* trick, which
+  `markCurrentlyWinning` depends on.
+
+Test fallout the phase description treats as mechanical but is not:
+
+- `ScoreboardTests` drove scoring through `setResult`. With results derived from stored tricks,
+  every such test has to award real `Trick`s — a local `awardTricks()` helper — and every seat
+  must bid, or `calculateScores` now throws. `"Scoreboard round scoring"` gave both seats a
+  trick in a **one-trick** round, which derived counting cannot represent; it moved to a 2-trick
+  round, with its asserted scores unchanged.
+- `GameEngineTests`' `"setResult before any bet does not corrupt getForbiddenBet"` section was
+  deleted: bets and results no longer share storage, so there is nothing left to corrupt.
+- `tests/TestSupport.h` is gone — it existed only to provide `seatOf()`.
 
 ---
 

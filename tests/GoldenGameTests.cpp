@@ -1,7 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "GameHarness.h"
-#include "TestSupport.h"
 
 #include <romanian_whist/AiMoveProvider.h>
 #include <romanian_whist/strategies/DuckingStrategy.h>

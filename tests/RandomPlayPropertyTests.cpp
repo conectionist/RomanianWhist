@@ -77,12 +77,12 @@ TEST_CASE("Random play never violates the rules", "[property]")
 
         hooks.onRoundScored = [&](const GameEngine& engine)
         {
-            const auto& players = engine.getPlayers();
-            unsigned int totalTricksWon = 0;
-            for(unsigned int i = 0 ; i < players.size() ; i++)
-                totalTricksWon += engine.getCurrentRound().getActual(players.at(i).getName());
-
-            REQUIRE(totalTricksWon == engine.getCurrentRoundTrickCount());
+            // Every trick is stored with its winner and tricks-won is counted
+            // off that, so summing it across the seats would only recount the
+            // stored tricks. Assert the thing that still has teeth: the round
+            // played out exactly as many tricks as it was dealt for.
+            REQUIRE(engine.getCurrentRound().getPlayedTrickCount() ==
+                    engine.getCurrentRoundTrickCount());
         };
 
         playFullGame(structure, std::move(providers), seed, hooks);

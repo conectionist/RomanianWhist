@@ -2,26 +2,45 @@
 #define TRICK_H
 
 #include <romanian_whist/Card.h>
-#include <romanian_whist/PlayerList.h>
+#include <romanian_whist/Seat.h>
 
 #include <vector>
 
 namespace romanian_whist
 {
+// A card and the seat that played it. Phase 4 of ENGINE_V4_PLAN.md turns the
+// card into a Card by value; the seat stays as it is.
+struct PlayedCard
+{
+    Seat seat;
+    Card* card;
+};
+
 class Trick
 {
 private:
-    std::vector<Card*> playedCards;
+    std::vector<PlayedCard> playedCards;
     Suit leadSuit;
     bool leadSuitSet;
-    PlayerList::iterator winner;
+    Seat winner;
     bool winnerSet;
 
 public:
     Trick();
 
-    void addPlayedCard(Card* card);
-    const std::vector<Card*>& getPlayedCards() const;
+    void addPlayedCard(Seat seat, Card* card);
+
+    // In the order the cards were played, so the first entry is the leader's.
+    const std::vector<PlayedCard>& getPlayedCards() const;
+
+    // The cards alone, in play order. PlayContext::playedCards is a flat list
+    // of cards - no strategy asks who played what - so this is what gets handed
+    // to a move provider. Built fresh each call, against a hand of at most
+    // eight cards.
+    std::vector<Card*> cardsInPlayOrder() const;
+
+    // Null if that seat has not played to this trick yet.
+    const Card* getCardPlayedBy(Seat seat) const;
 
     void setLeadSuit(Suit suit);
 
@@ -31,12 +50,12 @@ public:
     const Suit& getLeadSuit() const;
     bool hasLeadSuit() const;
 
-    void setWinner(PlayerList::iterator player);
+    void setWinner(Seat seat);
 
-    // Likewise, only meaningful once hasWinner() is true. Before setWinner() the
-    // stored iterator is singular and must not be dereferenced or compared.
-    PlayerList::iterator getWinner();
-    PlayerList::const_iterator getWinner() const;
+    // Likewise, only meaningful once hasWinner() is true. Before setWinner()
+    // the value returned is the placeholder the constructor installed, which
+    // names seat 0 without meaning it.
+    Seat getWinner() const;
     bool hasWinner() const;
 };
 

@@ -1,8 +1,9 @@
 #include "GameHarness.h"
-#include "TestSupport.h"
 
+#include <romanian_whist/Player.h>
 #include <romanian_whist/Trick.h>
 
+#include <optional>
 #include <stdexcept>
 
 namespace romanian_whist::test
@@ -28,56 +29,49 @@ GameEngine playFullGame(GameStructure structure,
         game.shuffleDeck();
         game.dealCards();
 
-        auto currentPlayer = game.getFirstPlayerOfTheRound();
+        Seat currentSeat = game.getRoundLeaderSeat();
 
         for(unsigned int i = 0 ; i < game.getPlayerCount() ; i++)
         {
-            const unsigned int bet = currentPlayer->getBet(game.getCurrentTrumpCard(),
-                                                           i == 0,
-                                                           game.getForbiddenBet());
+            const unsigned int bet = game.getPlayer(currentSeat).getBet(game.getCurrentTrumpCard(),
+                                                                        i == 0,
+                                                                        game.getForbiddenBet());
 
             if(hooks.onBeforeBetPlaced)
-                hooks.onBeforeBetPlaced(game, seatOf(game, currentPlayer), bet);
+                hooks.onBeforeBetPlaced(game, currentSeat, bet);
 
-            game.placeBet(currentPlayer, bet);
-            currentPlayer = game.getNextPlayer(currentPlayer);
-        }
-
-        // Redundant but harmless: Round::getActual() already returns 0 for a
-        // seat with no result recorded yet, so this just makes that explicit
-        // before the trick loop starts writing real values.
-        currentPlayer = game.getFirstPlayerOfTheRound();
-        for(unsigned int i = 0 ; i < game.getPlayerCount() ; i++)
-        {
-            game.setResult(currentPlayer, 0);
-            currentPlayer = game.getNextPlayer(currentPlayer);
+            game.placeBet(currentSeat, bet);
+            currentSeat = game.getNextSeat(currentSeat);
         }
 
         const unsigned int trickCount = game.getCurrentRoundTrickCount();
-        std::vector<unsigned int> tricksWon(game.getPlayerCount(), 0);
 
         for(unsigned int trickIndex = 0 ; trickIndex < trickCount ; trickIndex++)
         {
             Trick trick;
 
-            const auto leader = game.getFirstPlayerOfTheRound();
-            currentPlayer = leader;
+            currentSeat = game.getRoundLeaderSeat();
 
             for(unsigned int i = 0 ; i < game.getPlayerCount() ; i++)
             {
+                Player& player = game.getPlayer(currentSeat);
+
                 Card* trump = game.getCurrentTrumpCard();
                 const Suit* leadSuit = trick.hasLeadSuit() ? &trick.getLeadSuit() : nullptr;
 
-                const std::vector<Card*> handBeforePlay = currentPlayer->getHand();
+                const std::vector<Card*> handBeforePlay = player.getHand();
+                const std::vector<Card*> cardsSoFar = trick.cardsInPlayOrder();
 
-                Card* playedCard = currentPlayer->playCard(trump,
-                                                           leadSuit,
-                                                           trick.getPlayedCards(),
-                                                           game.getCurrentRound().getBet(currentPlayer->getName()),
-                                                           tricksWon[seatOf(game, currentPlayer)]);
+                const std::optional<unsigned int> bet = game.getCurrentRound().getBet(currentSeat);
+
+                Card* playedCard = player.playCard(trump,
+                                                   leadSuit,
+                                                   cardsSoFar,
+                                                   bet.value_or(0),
+                                                   game.getCurrentRound().getTricksWon(currentSeat));
 
                 if(playedCard == nullptr)
-                    throw std::runtime_error(currentPlayer->getName() + " had no legal card to play.");
+                    throw std::runtime_error(player.getName() + " had no legal card to play.");
 
                 if(hooks.onBeforeCardPlayed)
                     hooks.onBeforeCardPlayed(handBeforePlay, trump, leadSuit, playedCard);
@@ -85,19 +79,15 @@ GameEngine playFullGame(GameStructure structure,
                 if(!trick.hasLeadSuit())
                     trick.setLeadSuit(playedCard->suit);
 
-                trick.addPlayedCard(playedCard);
+                trick.addPlayedCard(currentSeat, playedCard);
 
-                currentPlayer = game.getNextPlayer(currentPlayer);
+                currentSeat = game.getNextSeat(currentSeat);
             }
 
-            const auto winner = game.determineTrickWinner(trick, leader);
+            const Seat winner = game.determineTrickWinner(trick);
             trick.setWinner(winner);
             game.addTrickToCurrentRound(trick);
-            game.setFirstPlayerOfTheRound(winner);
-
-            const unsigned int winnerSeat = seatOf(game, winner);
-            tricksWon[winnerSeat]++;
-            game.setResult(winner, tricksWon[winnerSeat]);
+            game.setRoundLeaderSeat(winner);
         }
 
         game.calculateScores();
@@ -130,10 +120,10 @@ std::function<void(const GameEngine&)> recordRoundsInto(RoundRecord& record)
         std::vector<std::pair<unsigned int, unsigned int>> row;
         const auto& players = g.getPlayers();
 
-        for(unsigned int i = 0 ; i < players.size() ; i++)
+        for(Seat seat = 0 ; seat < players.size() ; seat++)
         {
-            const std::string& name = players.at(i).getName();
-            row.emplace_back(g.getCurrentRound().getBet(name), g.getCurrentRound().getActual(name));
+            const Round& round = g.getCurrentRound();
+            row.emplace_back(round.getBet(seat).value_or(0), round.getTricksWon(seat));
         }
 
         record.push_back(row);
