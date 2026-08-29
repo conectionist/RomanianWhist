@@ -10,14 +10,16 @@ namespace romanian_whist::test
 GameEngine playFullGame(GameStructure structure,
                         std::vector<std::unique_ptr<IMoveProvider>> providers,
                         std::uint32_t seed,
-                        const GameHooks& hooks)
+                        const GameHooks& hooks,
+                        bool endWithForeheadAndHidden,
+                        bool all1GamesAreForehead)
 {
     GameEngine game(seed);
 
     for(std::size_t i = 0 ; i < providers.size() ; i++)
         game.addPlayer("P" + std::to_string(i), std::move(providers[i]));
 
-    game.initializeScoreboard(structure, false, false);
+    game.initializeScoreboard(structure, endWithForeheadAndHidden, all1GamesAreForehead);
     game.initializeDeck(static_cast<unsigned int>(providers.size()));
     game.setStatus(GameStatus::InProgress);
 

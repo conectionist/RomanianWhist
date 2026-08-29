@@ -35,11 +35,14 @@ struct GameHooks
 
 // Duplicates TerminalRomanianWhist::loop()/playCurrentRoundTricks(), stripped
 // of every view/renderer/pacer call. `providers.size()` is the player count,
-// one provider per seat in seat order.
+// one provider per seat in seat order. `endWithForeheadAndHidden` and
+// `all1GamesAreForehead` default to off, matching every existing caller.
 GameEngine playFullGame(GameStructure structure,
                         std::vector<std::unique_ptr<IMoveProvider>> providers,
                         std::uint32_t seed,
-                        const GameHooks& hooks = {});
+                        const GameHooks& hooks = {},
+                        bool endWithForeheadAndHidden = false,
+                        bool all1GamesAreForehead = false);
 
 std::vector<int> finalScores(const GameEngine& engine);   // seat-ordered totals
 

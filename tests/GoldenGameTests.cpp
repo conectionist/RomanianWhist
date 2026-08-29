@@ -117,3 +117,56 @@ TEST_CASE("Golden game: 6 players, S_818", "[golden]")
     GameEngine engine = playFullGame(GameStructure::S_818, buildRoundRobinProviders(6), kGoldenSeed);
     REQUIRE(finalScores(engine) == std::vector<int>{ 47, 72, 46, 51, 119, 58 });
 }
+
+TEST_CASE("Golden game: 4 players, S_181, endWithForeheadAndHidden + all1GamesAreForehead", "[golden]")
+{
+    // Nothing else exercises these flags through a full playthrough: the
+    // schedule-shape unit tests (ScoreboardTests.cpp) cover the round types
+    // and count in isolation, but not that scores/bids/tricks still add up,
+    // and not the opener rotation continuing correctly across the boundary
+    // into the two appended rounds.
+    RoundRecord record;
+
+    GameHooks hooks;
+    hooks.onRoundScored = recordRoundsInto(record);
+
+    GameEngine engine = playFullGame(GameStructure::S_181, buildRoundRobinProviders(4), kGoldenSeed,
+                                     hooks, /*endWithForeheadAndHidden=*/true, /*all1GamesAreForehead=*/true);
+
+    REQUIRE(engine.getRoundCount() == 3 * 4 + 12 + 2);
+    REQUIRE(record.size() == engine.getRoundCount());
+    REQUIRE(finalScores(engine) == std::vector<int>{ 49, 66, 14, 20 });
+
+    // clang-format off
+    const RoundRecord expected{
+        { {0,0}, {0,0}, {0,0}, {0,1} },
+        { {1,0}, {1,1}, {0,0}, {0,0} },
+        { {0,0}, {0,0}, {0,0}, {0,1} },
+        { {0,0}, {0,0}, {0,1}, {0,0} },
+        { {0,0}, {0,0}, {0,0}, {0,2} },
+        { {0,0}, {1,0}, {0,1}, {0,2} },
+        { {0,1}, {1,1}, {0,2}, {0,0} },
+        { {0,0}, {1,4}, {0,1}, {0,0} },
+        { {0,3}, {1,0}, {0,1}, {0,2} },
+        { {0,2}, {0,2}, {0,2}, {0,1} },
+        { {0,1}, {1,1}, {0,6}, {0,0} },
+        { {0,2}, {0,2}, {0,0}, {0,4} },
+        { {0,1}, {1,4}, {0,2}, {0,1} },
+        { {0,1}, {2,6}, {0,0}, {0,1} },
+        { {0,0}, {1,1}, {0,2}, {0,4} },
+        { {0,1}, {0,2}, {0,1}, {0,2} },
+        { {0,0}, {2,3}, {0,1}, {0,1} },
+        { {0,2}, {1,1}, {0,0}, {0,1} },
+        { {0,1}, {1,1}, {0,1}, {0,0} },
+        { {0,0}, {0,0}, {0,2}, {0,0} },
+        { {0,0}, {0,0}, {0,0}, {0,1} },
+        { {0,0}, {0,0}, {0,1}, {0,0} },
+        { {0,0}, {0,0}, {0,1}, {0,0} },
+        { {0,0}, {0,1}, {0,0}, {0,0} },
+        { {0,0}, {0,0}, {0,1}, {0,0} },
+        { {0,0}, {0,0}, {0,0}, {0,1} },
+    };
+    // clang-format on
+
+    REQUIRE(record == expected);
+}

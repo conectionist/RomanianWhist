@@ -71,6 +71,27 @@ TEST_CASE("GameEngine::getForbiddenBet", "[game-engine]")
 
         REQUIRE_FALSE(engine.getForbiddenBet().has_value());
     }
+
+    SECTION("setResult before any bet does not corrupt getForbiddenBet")
+    {
+        // Round::setResult() writes into the same map entry setBet() does;
+        // hasBet() has to tell a real bet apart from a result seeded first
+        // (Round.h), or every seat looks like it has already bid and
+        // getForbiddenBet() goes blind for the rest of the round.
+        engine.setResult(first, 0);
+        engine.setResult(second, 0);
+        engine.setResult(third, 0);
+
+        REQUIRE_FALSE(engine.getForbiddenBet().has_value());
+
+        engine.placeBet(first, 0);
+        engine.placeBet(second, 1);
+
+        const auto forbidden = engine.getForbiddenBet();
+        REQUIRE(forbidden.has_value());
+        REQUIRE(*forbidden == 1u);
+        REQUIRE_FALSE(engine.isBetLegal(1));
+    }
 }
 
 TEST_CASE("GameEngine::isBetLegal", "[game-engine]")

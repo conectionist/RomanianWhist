@@ -1,12 +1,16 @@
 #include <romanian_whist/detail/RandomDraw.h>
 
-#include <cassert>
+#include <stdexcept>
 
 namespace romanian_whist::detail
 {
 unsigned int uniformIndex(std::mt19937& generator, unsigned int exclusiveUpperBound)
 {
-    assert(exclusiveUpperBound > 0 && "uniformIndex: exclusiveUpperBound must be > 0");
+    // Not an assert: this still has to fail loudly in the release
+    // configuration, where NDEBUG strips assert() and the alternative is a
+    // silent division by zero below.
+    if(exclusiveUpperBound == 0)
+        throw std::invalid_argument("uniformIndex: exclusiveUpperBound must be > 0");
 
     using ResultType = std::mt19937::result_type;
 
