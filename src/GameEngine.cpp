@@ -15,6 +15,15 @@ GameEngine::GameEngine(std::uint32_t seed) : status(GameStatus::NotStarted), gen
 
 void GameEngine::addPlayer(const std::string &name, std::unique_ptr<IMoveProvider> moveProvider)
 {
+    // Round::bets is keyed by name (Round.h), so two seats sharing a name
+    // would silently share one bet and one trick count. Reject it here
+    // rather than let it corrupt scoring later.
+    for(const auto& player : players)
+    {
+        if(player.getName() == name)
+            throw std::invalid_argument("duplicate player name: " + name);
+    }
+
     players.addPlayer(name, std::move(moveProvider));
 }
 
@@ -29,6 +38,10 @@ void GameEngine::initializeDeck(unsigned int playerCount)
 {
     if(playerCount < 2 || playerCount > 6)
         throw std::invalid_argument("playerCount must be between 2 and 6");
+
+    // Deck::addCard only ever appends, so a second call without this would
+    // leave two copies of every card in play.
+    deck = Deck{};
 
     for(int s = 0 ; s < 4 ; s++)
         for(int r = 1 + (6 - playerCount) * 2 ; r < 13 ; r++)

@@ -118,6 +118,24 @@ TEST_CASE("GameEngine::isBetLegal", "[game-engine]")
     REQUIRE(engine.isBetLegal(2));
 }
 
+TEST_CASE("GameEngine::addPlayer rejects duplicate names", "[game-engine]")
+{
+    GameEngine engine;
+    engine.addPlayer("A", dummyProvider());
+
+    REQUIRE_THROWS_AS(engine.addPlayer("A", dummyProvider()), std::invalid_argument);
+    REQUIRE(engine.getPlayerCount() == 1);
+}
+
+TEST_CASE("GameEngine::initializeDeck does not duplicate cards on a second call", "[game-engine]")
+{
+    GameEngine engine;
+    engine.initializeDeck(4);
+    engine.initializeDeck(4);
+
+    REQUIRE(engine.getDeck().size() == 32);
+}
+
 TEST_CASE("GameEngine::initializeDeck rejects impossible player counts", "[game-engine]")
 {
     SECTION("1 player throws")
