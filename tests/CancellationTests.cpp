@@ -460,8 +460,110 @@ TEST_CASE("The trick number moves with the round index", "[cancellation]")
         REQUIRE(*watcher.trickNumberAtStop == 0);
 
         // The number the stop reports has to be one the round it names could
-        // actually reach. Round 1 of an S_818 game has a single trick, so the
-        // stale 8 failed this outright.
+        // actually reach. Round 1 of this 4-player S_818 game has eight tricks,
+        // like round 0, so this is the weaker of the two checks - the == 0
+        // above is what actually catches a stale trick number here. Kept
+        // because it is the invariant that holds for every round, including the
+        // 1-trick ones a stop can land between further down the schedule.
         REQUIRE(*watcher.trickNumberAtStop <= *watcher.trickCountAtStop);
     }
+}
+
+TEST_CASE("A stop raised during bidding is honoured before the next seat bids",
+          "[cancellation]")
+{
+    // Bidding is a boundary in its own right. Without one, a stop raised in
+    // onRoundStarted() or in an early onBetPlaced() still walked the rest of
+    // the table collecting bids for a hand it was about to throw away - with a
+    // human provider, three prompts for a round nobody will ever play.
+    struct Bidder : IGameObserver
+    {
+        GameEngine* engine = nullptr;
+
+        // Which onBetPlaced to stop on, 1-based; 0 stops from onRoundStarted,
+        // before anyone has been asked at all.
+        unsigned int stopAfterBet = 0;
+
+        unsigned int betsRequested = 0;
+        unsigned int betsPlaced = 0;
+        unsigned int bettingComplete = 0;
+        unsigned int tricksStarted = 0;
+        unsigned int roundsScored = 0;
+        unsigned int gameOver = 0;
+        unsigned int gameStopped = 0;
+
+        void onRoundStarted(const GameEngine&) override
+        {
+            if(stopAfterBet == 0)
+                engine->requestStop();
+        }
+
+        void onBetRequested(const GameEngine&, Seat) override { betsRequested++; }
+        void onBettingComplete(const GameEngine&) override { bettingComplete++; }
+        void onTrickStarted(const GameEngine&, unsigned int, Seat) override { tricksStarted++; }
+        void onRoundScored(const GameEngine&) override { roundsScored++; }
+        void onGameOver(const GameEngine&) override { gameOver++; }
+        void onGameStopped(const GameEngine&) override { gameStopped++; }
+
+        void onBetPlaced(const GameEngine&, Seat, unsigned int) override
+        {
+            betsPlaced++;
+
+            if(betsPlaced == stopAfterBet)
+                engine->requestStop();
+        }
+    };
+
+    Bidder bidder;
+    unsigned int expectedBetsRequested = 0;
+
+    SECTION("raised in onRoundStarted, before anyone is asked")
+    {
+        bidder.stopAfterBet = 0;
+        expectedBetsRequested = 0;
+    }
+
+    SECTION("raised in the first onBetPlaced, so three seats are never asked")
+    {
+        bidder.stopAfterBet = 1;
+        expectedBetsRequested = 1;
+    }
+
+    SECTION("raised in the last onBetPlaced, with the table already round")
+    {
+        // No seat is spared here - the point is the phase and the unscored
+        // round, and that the trick loop never starts on bets nobody will use.
+        bidder.stopAfterBet = 4;
+        expectedBetsRequested = 4;
+    }
+
+    const auto engine = buildGame();
+    bidder.engine = engine.get();
+
+    engine->addObserver(&bidder);
+    engine->setStatus(GameStatus::InProgress);
+    engine->run();
+
+    REQUIRE(engine->getStatus() == GameStatus::Stopped);
+    REQUIRE(bidder.gameStopped == 1);
+    REQUIRE(bidder.gameOver == 0);
+
+    // The seats after the stop are never prompted, which is the whole point.
+    REQUIRE(bidder.betsRequested == expectedBetsRequested);
+
+    // Bidding never completed, so no trick was ever started on it, and the
+    // round it stopped in is left unscored and still current.
+    REQUIRE(bidder.bettingComplete == 0);
+    REQUIRE(bidder.tricksStarted == 0);
+    REQUIRE(bidder.roundsScored == 0);
+    REQUIRE(engine->getCurrentRoundIndex() == 0);
+    REQUIRE(engine->getCurrentTrickNumber() == 0);
+
+    // Betting, not Playing: the phase is read before runBidding() hands over,
+    // so a stop honoured anywhere in bidding says where it actually landed.
+    REQUIRE(engine->getPhase() == GamePhase::Betting);
+
+    // Nobody's turn any more, including when the stop landed between the
+    // provider being asked and the next seat being reached.
+    REQUIRE_FALSE(engine->getActiveSeat().has_value());
 }

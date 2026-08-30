@@ -192,6 +192,7 @@ void GameEngine::removeObserver(IGameObserver* observer)
 
 void GameEngine::run()
 {
+    requireNotDriving("run");
     requireInProgress();
 
     while(isInProgress())
@@ -208,7 +209,12 @@ void GameEngine::run()
 
 void GameEngine::playRound()
 {
+    requireNotDriving("playRound");
     requireInProgress();
+
+    // Raised for the whole round, so every provider call and every observer
+    // callback below is made with the engine visibly busy.
+    DrivingGuard guard(*this);
 
     // The round boundary. Read here rather than in run()'s loop, because
     // playRound() is a documented entry point in its own right: a client
@@ -221,7 +227,12 @@ void GameEngine::playRound()
     dealRound();
     notifyRoundStarted();
 
-    runBidding();
+    // Bidding reads the stop flag between bids, so it can give up partway
+    // through the table rather than collecting bids for a round that is being
+    // abandoned. It has already fired onGameStopped() by the time it says so.
+    if(runBidding())
+        return;
+
     notifyBettingComplete();
 
     const unsigned int trickCount = getCurrentRoundTrickCount();
@@ -304,12 +315,20 @@ void GameEngine::dealRound()
     phase = GamePhase::Betting;
 }
 
-void GameEngine::runBidding()
+bool GameEngine::runBidding()
 {
     Seat seat = scoreboard.getCurrentRound().getRoundLeaderSeat();
 
     for(unsigned int i = 0 ; i < players.size() ; i++)
     {
+        // The bid boundary, and the same harm the round boundary exists to
+        // avoid one step earlier: without it a stop raised in onRoundStarted(),
+        // or in an earlier seat's onBetRequested()/onBetPlaced(), still walked
+        // the rest of the table asking for bids on a hand discarded unscored a
+        // moment later - with a human provider, three needless prompts.
+        if(honourStopIfRequested())
+            return true;
+
         activeSeat = seat;
         notifyBetRequested(seat);
 
@@ -333,8 +352,17 @@ void GameEngine::runBidding()
         seat = getNextSeat(seat);
     }
 
+    // The last bid has no boundary inside the loop after it, so the flag gets
+    // one last read here - and gets it before the phase moves on, which is what
+    // makes "a stop honoured anywhere in bidding leaves getPhase() saying
+    // Betting" true rather than nearly true.
+    if(honourStopIfRequested())
+        return true;
+
     activeSeat.reset();
     phase = GamePhase::Playing;
+
+    return false;
 }
 
 void GameEngine::playTrick()
@@ -568,13 +596,6 @@ unsigned int GameEngine::getCurrentRoundTrickCount() const
     return scoreboard.getCurrentRound().getTrickCount();
 }
 
-void GameEngine::addTrickToCurrentRound(const Trick& trick)
-{
-    requireStarted();
-
-    scoreboard.getCurrentRound().addTrick(trick);
-}
-
 Seat GameEngine::determineTrickWinner(const Trick& trick) const
 {
     const std::vector<PlayedCard>& playedCards = trick.getPlayedCards();
@@ -594,13 +615,6 @@ Seat GameEngine::determineTrickWinner(const Trick& trick) const
     // leader: the trick records who played each card, so the position a card
     // was played in never has to be translated back into a seat.
     return playedCards[bestIndex].seat;
-}
-
-void GameEngine::setTrickLeaderSeat(Seat seat)
-{
-    requireStarted();
-
-    scoreboard.getCurrentRound().setTrickLeaderSeat(seat);
 }
 
 void GameEngine::completeCurrentRound()
@@ -779,6 +793,29 @@ bool GameEngine::cardBeats(const Card& candidate, const Card& currentBest, Suit 
     return CardValidator::beats(candidate, currentBest, leadSuit, getCurrentTrumpCard());
 }
 
+GameEngine::DrivingGuard::DrivingGuard(GameEngine& engine) : engine(engine)
+{
+    engine.driving = true;
+}
+
+GameEngine::DrivingGuard::~DrivingGuard()
+{
+    // Cleared rather than restored, unlike DispatchGuard: rounds cannot nest,
+    // which is the whole point of the flag, so there is never an outer round
+    // whose raised flag this would have to hand back.
+    engine.driving = false;
+}
+
+void GameEngine::requireNotDriving(const char* caller) const
+{
+    if(driving)
+        throw std::logic_error(std::string("GameEngine::") + caller + ": the game "
+                               "cannot be driven from inside a move provider or an "
+                               "observer callback - a round is already in flight, and "
+                               "a second one would deal over its hands and bets. Call "
+                               "requestStop() instead");
+}
+
 // Dispatch. Each of these iterates `observers` directly rather than through a
 // shared template, so that a stack trace names the callback that threw.
 // Registering or removing an observer from inside one of these invalidates the
@@ -794,11 +831,12 @@ GameEngine::DispatchGuard::DispatchGuard(GameEngine& engine)
 GameEngine::DispatchGuard::~DispatchGuard()
 {
     // Restored rather than cleared, because dispatches nest: an observer that
-    // calls back into the engine from a callback (run(), playRound()) walks the
-    // list again inside the outer walk, and clearing here would leave the outer
-    // one unguarded for the rest of its iteration - the removeObserver() it
-    // exists to reject would be accepted, and the range-for would then read
-    // past the vector it is halfway through.
+    // calls back into the engine from onGameStarted() - the one callback the
+    // engine makes with no round in flight, so the one place run()/playRound()
+    // is still allowed - walks the list again inside the outer walk, and
+    // clearing here would leave the outer one unguarded for the rest of its
+    // iteration: the removeObserver() it exists to reject would be accepted,
+    // and the range-for would then read past the vector it is halfway through.
     engine.dispatching = wasDispatching;
 }
 

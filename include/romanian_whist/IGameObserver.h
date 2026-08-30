@@ -26,7 +26,13 @@ class GameEngine;
 // A callback must not add or remove observers - the engine is walking that list
 // to reach this call, and both throw std::logic_error rather than corrupt the
 // walk. An observer that wants to detach sets a flag and lets the client detach
-// it between rounds. requestStop() is the one thing a callback may always do.
+// it between rounds.
+//
+// A callback must not drive the game either: run() and playRound() throw
+// std::logic_error from every callback below except onGameStarted(), which the
+// engine makes while it is still idle. A round re-entered from inside one deals
+// over the hands and bets the outer round is midway through playing.
+// requestStop() is the one thing a callback may always do.
 //
 // Parameters are unnamed so that a no-op override does not have to silence an
 // unused-parameter warning; each is named in the comment above it.
@@ -82,8 +88,9 @@ public:
 
     // Scored, not yet committed. This - not onRoundComplete - is the round-end
     // render hook: it is the last callback at which getCurrentRoundIndex() still
-    // names the round being reported. getRoundScore() is what the round was
-    // worth and getTotalScore() the running total it has not yet folded into.
+    // names the round being reported. getPlayerRoundScores() gives each seat
+    // what this round was worth alongside the total it is about to fold into,
+    // and getPlayerScores() the committed totals it has not folded into yet.
     virtual void onRoundScored(const GameEngine&) {}
 
     // Committed, and the index has already advanced - so getCurrentRoundIndex()
@@ -94,10 +101,14 @@ public:
     // Played to the end of the schedule. Fires once.
     virtual void onGameOver(const GameEngine&) {}
 
-    // requestStop() was honoured at a trick boundary. Fires once, instead of
-    // onGameOver(). The round it stopped in is left unscored - including when
-    // the stop lands during that round's LAST trick, which is played out in
-    // full and then abandoned unscored like any other.
+    // requestStop() was honoured at a round, bid or trick boundary. Fires once,
+    // instead of onGameOver(). The round it stopped in is left unscored -
+    // including when the stop lands during that round's LAST trick, which is
+    // played out in full and then abandoned unscored like any other.
+    //
+    // A stop raised during bidding is honoured before the next seat is asked to
+    // bid, so the rest of the table is never prompted for a hand that is being
+    // abandoned; getPhase() is Betting there, and the round has no tricks.
     //
     // A stop asked for once the last round is already scored has no boundary
     // left to land on, so it does not fire this: onRoundScored() and

@@ -29,10 +29,11 @@ enum class GameStatus
 // getStatus() is what says the game is over, and getPhase() is left saying
 // where the game had got to when it stopped. Which phase that is depends on
 // where the stop was raised - Playing for the usual case of a stop honoured at
-// a trick boundary, with the round left unscored, but RoundScored for one
-// raised in onRoundScored()/onRoundComplete() and honoured before the next
-// deal (that round *was* scored), and NotStarted for one honoured before the
-// first round was ever dealt.
+// a trick boundary, with the round left unscored; Betting for one honoured at a
+// bid boundary, before the round it was raised in ever reached a trick; but
+// RoundScored for one raised in onRoundScored()/onRoundComplete() and honoured
+// before the next deal (that round *was* scored), and NotStarted for one
+// honoured before the first round was ever dealt.
 //
 // RoundScored spans BOTH onRoundScored and onRoundComplete. An observer that
 // needs to tell those apart uses the callback it is in, not getPhase().
@@ -95,6 +96,28 @@ private:
 
         DispatchGuard(const DispatchGuard&) = delete;
         DispatchGuard& operator=(const DispatchGuard&) = delete;
+    };
+
+    // True while run()/playRound() is inside a round. Both consult it and
+    // throw, because a re-entrant call re-deals the round already in flight:
+    // hands are cleared and bets overwritten under the loop that is still
+    // playing them - see their declarations below.
+    bool driving = false;
+
+    // Raises `driving` for the duration of one round and lowers it on the way
+    // out, including when a provider or observer throws. Same shape, and the
+    // same reasoning, as DispatchGuard above.
+    class DrivingGuard
+    {
+    private:
+        GameEngine& engine;
+
+    public:
+        explicit DrivingGuard(GameEngine& engine);
+        ~DrivingGuard();
+
+        DrivingGuard(const DrivingGuard&) = delete;
+        DrivingGuard& operator=(const DrivingGuard&) = delete;
     };
 
     GamePhase phase = GamePhase::NotStarted;
@@ -212,12 +235,19 @@ public:
     // engine is left mid-round and NOT resumable - destroy it. Nothing here is
     // exception-safe in the strong sense, and it does not need to be: the state
     // is already inconsistent and pretending otherwise is worse.
+    //
+    // Neither may be called while a round is in flight - that is, from a move
+    // provider, or from any observer callback except onGameStarted(), which the
+    // engine makes while it is still idle. Both throw std::logic_error rather
+    // than re-enter, because a re-entrant round deals over the hands and bets
+    // the outer one is midway through playing. A callback that wants the game
+    // to end asks for that with requestStop().
     void run();          // playRound() until the schedule runs out or a stop lands
     void playRound();    // deal, bet, play every trick, score, advance
 
-    // Ends cleanly at the next round or trick boundary; status -> Stopped, and
-    // observers get onGameStopped() rather than onGameOver(). Safe to call from
-    // another thread; it only sets an atomic flag.
+    // Ends cleanly at the next round, bid or trick boundary; status -> Stopped,
+    // and observers get onGameStopped() rather than onGameOver(). Safe to call
+    // from another thread; it only sets an atomic flag.
     //
     // playRound() reads the flag before it deals, so a client driving rounds
     // itself honours a stop at the same boundaries, in the same order, as one
@@ -227,6 +257,11 @@ public:
     // the round it landed in - not even one it caught on the last trick, and
     // not even on the last round of the schedule.
     //
+    // Bidding has boundaries of its own, so a stop raised in onRoundStarted()
+    // or in one seat's onBetRequested()/onBetPlaced() does not walk the rest of
+    // the table asking for bids on a hand that is about to be abandoned. A stop
+    // honoured anywhere in bidding leaves getPhase() saying Betting.
+    //
     // A stop requested after the last round has been scored - from
     // onRoundScored() or onRoundComplete() on the final round, or any time
     // after the game reaches Finished - is a no-op: there is no round left to
@@ -235,8 +270,9 @@ public:
     // are both terminal and the game reached one of them first.
     //
     // It cannot interrupt a move provider already parked waiting for a human:
-    // the flag is only read between tricks and rounds. Unparking that provider
-    // is the client's job, and throwing from it is the supported way out.
+    // the flag is only read between bids, tricks and rounds. Unparking that
+    // provider is the client's job, and throwing from it is the supported way
+    // out.
     void requestStop();
 
     Card* getCurrentTrumpCard();
@@ -341,7 +377,6 @@ private:
     void dealCards();
 
     void placeBet(Seat seat, unsigned int bet);
-    void addTrickToCurrentRound(const Trick& trick);
 
     // Ranks whatever has been played so far, so this also answers "who is
     // winning?" partway through a trick - which is what getCurrentTrickLeader()
@@ -349,7 +384,6 @@ private:
     // which has no answer to give.
     Seat determineTrickWinner(const Trick& trick) const;
 
-    void setTrickLeaderSeat(Seat seat);
     void completeCurrentRound();
     void calculateScores();
     void commitRoundScores();
@@ -374,13 +408,21 @@ private:
     // `caller` names the method for the message.
     void requireNotDispatching(const char* caller) const;
 
+    // Rejects run()/playRound() re-entered from a provider or an observer while
+    // a round is already in flight. `caller` names the method for the message.
+    void requireNotDriving(const char* caller) const;
+
     // The three stages of a round, kept separate so that each one's place in
     // the callback order is readable. All of them advance state that lives in
     // members - the phase, the active seat, the trick number, the round's
     // in-flight trick - rather than in locals of a nested loop, which is what
     // keeps a future non-blocking playStep() an additive change.
     void dealRound();
-    void runBidding();
+
+    // Returns true if a stop was honoured partway through, in which case the
+    // round has no bets to play out and the caller must give up on it.
+    bool runBidding();
+
     void playTrick();
 
     // Returns true if the game has been stopped and the caller should give up.

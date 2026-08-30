@@ -282,11 +282,13 @@ TEST_CASE("The observer list cannot be changed from inside a callback", "[observ
 
 TEST_CASE("A nested dispatch leaves the outer one guarded", "[observer]")
 {
-    // An observer is free to call back into the engine from a callback, and
-    // playRound() dispatches in its own right - so dispatches nest. The guard
-    // is what makes the outer walk safe, and it has to survive the inner one
-    // finishing: the flag is restored on the way out, not cleared, or every
-    // observer after the nested caller could mutate the list mid-walk.
+    // onGameStarted() is the one callback the engine makes with no round in
+    // flight, so it is the one place an observer may still drive the game -
+    // everywhere else run()/playRound() are refused. playRound() dispatches in
+    // its own right, so dispatches nest here. The guard is what makes the outer
+    // walk safe, and it has to survive the inner one finishing: the flag is
+    // restored on the way out, not cleared, or every observer after the nested
+    // caller could mutate the list mid-walk.
     struct NestingObserver : IGameObserver
     {
         GameEngine* engine = nullptr;
@@ -600,4 +602,173 @@ TEST_CASE("Each callback sees the state IGameObserver promises", "[observer]")
 
     REQUIRE(checker.roundsChecked == engine->getRoundCount());
     REQUIRE(checker.tricksChecked > 0);
+}
+
+TEST_CASE("run() and playRound() are refused while a round is in flight", "[observer]")
+{
+    // A callback or a provider that drives the game re-enters playRound() on an
+    // engine that is halfway through a round: dealRound() clears the hands the
+    // outer trick loop is still playing from and overwrites the bets it scores
+    // against. What used to happen was either an assertion deep in Round ("round
+    // already has all its tricks") or, for a nested run(), the whole rest of the
+    // schedule playing to completion and onGameOver() firing before the outer
+    // loop had even finished its trick.
+    struct Reenterer : IGameObserver
+    {
+        GameEngine* engine = nullptr;
+
+        // Set to make the callback call run() rather than playRound(); both are
+        // refused, and for the same reason.
+        bool useRun = false;
+
+        bool threw = false;
+        unsigned int attempts = 0;
+
+        void attempt()
+        {
+            // Once only: the callback fires many times over a round, and the
+            // first refusal is the one under test.
+            if(attempts > 0)
+                return;
+
+            attempts++;
+
+            try
+            {
+                if(useRun)
+                    engine->run();
+                else
+                    engine->playRound();
+            }
+            catch(const std::logic_error&)
+            {
+                threw = true;
+            }
+        }
+    };
+
+    struct FromCardPlayed : Reenterer
+    {
+        void onCardPlayed(const GameEngine&, Seat, const Card&) override { attempt(); }
+    };
+
+    struct FromTrickWon : Reenterer
+    {
+        void onTrickWon(const GameEngine&, Seat, unsigned int) override { attempt(); }
+    };
+
+    struct FromBetRequested : Reenterer
+    {
+        void onBetRequested(const GameEngine&, Seat) override { attempt(); }
+    };
+
+    FromCardPlayed fromCardPlayed;
+    FromTrickWon fromTrickWon;
+    FromBetRequested fromBetRequested;
+
+    Reenterer* reenterer = nullptr;
+
+    SECTION("run() from onCardPlayed")
+    {
+        fromCardPlayed.useRun = true;
+        reenterer = &fromCardPlayed;
+    }
+
+    SECTION("playRound() from onTrickWon")
+    {
+        reenterer = &fromTrickWon;
+    }
+
+    SECTION("playRound() from onBetRequested, before a card is ever played")
+    {
+        reenterer = &fromBetRequested;
+    }
+
+    auto enginePtr = buildEngine(3);
+    GameEngine& engine = *enginePtr;
+
+    reenterer->engine = &engine;
+    engine.addObserver(reenterer);
+
+    engine.setStatus(GameStatus::InProgress);
+    engine.run();
+
+    REQUIRE(reenterer->attempts == 1);
+    REQUIRE(reenterer->threw);
+
+    // Refused, not derailed: the game the outer run() was driving still played
+    // its whole schedule out.
+    REQUIRE(engine.getStatus() == GameStatus::Finished);
+    REQUIRE(engine.getCurrentRoundIndex() + 1 == engine.getRoundCount());
+}
+
+TEST_CASE("A move provider cannot drive the game either", "[observer]")
+{
+    // The observer list is not the only way back into the engine mid-round -
+    // the engine calls providers too, and outside a dispatch. A guard that only
+    // watched the observer walk would let this one through.
+    struct DrivingProvider : ScriptedMoveProvider
+    {
+        GameEngine* engine = nullptr;
+        bool threw = false;
+        unsigned int attempts = 0;
+
+        Card* playCard(const PlayContext& context) override
+        {
+            if(attempts == 0)
+            {
+                attempts++;
+
+                try
+                {
+                    engine->playRound();
+                }
+                catch(const std::logic_error&)
+                {
+                    threw = true;
+                }
+            }
+
+            return ScriptedMoveProvider::playCard(context);
+        }
+    };
+
+    auto enginePtr = std::make_unique<GameEngine>(1u);
+    GameEngine& engine = *enginePtr;
+
+    auto owned = std::make_unique<DrivingProvider>();
+    DrivingProvider& provider = *owned;
+    provider.engine = &engine;
+
+    engine.addPlayer("P0", std::move(owned));
+    engine.addPlayer("P1", dummyProvider());
+    engine.addPlayer("P2", dummyProvider());
+
+    engine.initializeScoreboard(GameStructure::S_181, false, false);
+    engine.initializeDeck(3);
+
+    engine.setStatus(GameStatus::InProgress);
+    engine.run();
+
+    REQUIRE(provider.attempts == 1);
+    REQUIRE(provider.threw);
+    REQUIRE(engine.getStatus() == GameStatus::Finished);
+}
+
+TEST_CASE("The ban on driving lifts once the round is over", "[observer]")
+{
+    // The flag is lowered on the way out of playRound(), including the way out
+    // a stop takes, so a client that drives rounds itself is not met with a
+    // stale refusal on the next one.
+    auto enginePtr = buildEngine(3);
+    GameEngine& engine = *enginePtr;
+
+    engine.setStatus(GameStatus::InProgress);
+
+    REQUIRE_NOTHROW(engine.playRound());
+    REQUIRE_NOTHROW(engine.playRound());
+    REQUIRE(engine.getCurrentRoundIndex() == 2);
+
+    REQUIRE_NOTHROW(engine.run());
+    REQUIRE(engine.getStatus() == GameStatus::Finished);
 }
