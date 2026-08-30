@@ -6,6 +6,7 @@
 #include <romanian_whist/IGameObserver.h>
 
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -25,6 +26,7 @@ struct Tally : IGameObserver
     unsigned int roundsStarted = 0;
     unsigned int roundsScored = 0;
     unsigned int tricksWon = 0;
+    unsigned int betsRequested = 0;
     unsigned int gameOver = 0;
     unsigned int gameStopped = 0;
 
@@ -39,6 +41,7 @@ struct Tally : IGameObserver
     bool stopOnFinalTrickOfGame = false;
 
     void onRoundStarted(const GameEngine&) override { roundsStarted++; }
+    void onBetRequested(const GameEngine&, Seat) override { betsRequested++; }
     void onRoundScored(const GameEngine&) override { roundsScored++; }
     void onGameOver(const GameEngine&) override { gameOver++; }
     void onGameStopped(const GameEngine&) override { gameStopped++; }
@@ -356,5 +359,109 @@ TEST_CASE("A terminal game cannot be restarted through setStatus", "[cancellatio
         REQUIRE(engine->getStatus() == GameStatus::Finished);
         REQUIRE(tally.gameOver == 1);
         REQUIRE(tally.roundsScored == engine->getRoundCount());
+    }
+}
+
+TEST_CASE("playRound() reads the stop flag before it deals", "[cancellation]")
+{
+    // playRound() is a documented entry point, not just run()'s helper, so it
+    // owes a stop the same answer run() gives. The check used to live only in
+    // run()'s loop, which left a client driving rounds itself dealing one more
+    // round after requestStop() - and, with a human provider, asking every
+    // player to bid on a hand thrown away a moment later.
+    const auto engine = buildGame();
+    Tally tally;
+    engine->addObserver(&tally);
+
+    engine->setStatus(GameStatus::InProgress);
+    engine->requestStop();
+    engine->playRound();
+
+    REQUIRE(engine->getStatus() == GameStatus::Stopped);
+    REQUIRE(tally.gameStopped == 1);
+    REQUIRE(tally.gameOver == 0);
+
+    // Nothing dealt, nobody asked to bid, the schedule untouched - the same
+    // state the run() version of this test pins.
+    REQUIRE(tally.roundsStarted == 0);
+    REQUIRE(tally.betsRequested == 0);
+    REQUIRE(tally.roundsScored == 0);
+    REQUIRE(engine->getCurrentRoundIndex() == 0);
+    REQUIRE(engine->getPhase() == GamePhase::NotStarted);
+}
+
+TEST_CASE("The trick number moves with the round index", "[cancellation]")
+{
+    // getCurrentTrickNumber() counts tricks within the round getCurrentRoundIndex()
+    // names, so the two have to advance together. completeCurrentRound() used to
+    // move the index alone and leave the finished round's last trick number
+    // standing - visible at onRoundComplete(), and at onGameStopped() for a stop
+    // honoured between rounds. In an S_818 game that reads as "trick 8" over a
+    // round with one trick in it.
+    struct Watcher : IGameObserver
+    {
+        GameEngine* engine = nullptr;
+        bool stopOnFirstRoundScored = false;
+
+        std::optional<unsigned int> trickNumberAtRoundComplete;
+        std::optional<unsigned int> trickNumberAtStop;
+        std::optional<unsigned int> trickCountAtStop;
+
+        void onRoundScored(const GameEngine& e) override
+        {
+            if(stopOnFirstRoundScored && e.getCurrentRoundIndex() == 0)
+                engine->requestStop();
+        }
+
+        void onRoundComplete(const GameEngine& e) override
+        {
+            if(!trickNumberAtRoundComplete.has_value())
+                trickNumberAtRoundComplete = e.getCurrentTrickNumber();
+        }
+
+        void onGameStopped(const GameEngine& e) override
+        {
+            trickNumberAtStop = e.getCurrentTrickNumber();
+            trickCountAtStop = e.getCurrentRoundTrickCount();
+        }
+    };
+
+    Watcher watcher;
+
+    SECTION("at onRoundComplete")
+    {
+        watcher.stopOnFirstRoundScored = false;
+    }
+
+    SECTION("and at onGameStopped for a stop honoured between rounds")
+    {
+        watcher.stopOnFirstRoundScored = true;
+    }
+
+    const auto engine = buildGame();
+    watcher.engine = engine.get();
+
+    engine->addObserver(&watcher);
+    engine->setStatus(GameStatus::InProgress);
+    engine->run();
+
+    // The first round's eight tricks are all played; the index then moves to
+    // round 1, and the trick number goes back to 0 with it - there is no
+    // in-flight trick at a round boundary for it to name.
+    REQUIRE(watcher.trickNumberAtRoundComplete.has_value());
+    REQUIRE(*watcher.trickNumberAtRoundComplete == 0);
+
+    if(watcher.stopOnFirstRoundScored)
+    {
+        REQUIRE(engine->getStatus() == GameStatus::Stopped);
+        REQUIRE(engine->getCurrentRoundIndex() == 1);
+
+        REQUIRE(watcher.trickNumberAtStop.has_value());
+        REQUIRE(*watcher.trickNumberAtStop == 0);
+
+        // The number the stop reports has to be one the round it names could
+        // actually reach. Round 1 of an S_818 game has a single trick, so the
+        // stale 8 failed this outright.
+        REQUIRE(*watcher.trickNumberAtStop <= *watcher.trickCountAtStop);
     }
 }

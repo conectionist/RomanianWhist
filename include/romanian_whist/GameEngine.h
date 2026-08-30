@@ -25,10 +25,14 @@ enum class GameStatus
     Stopped
 };
 
-// Where in a round the game is. Deliberately has no Stopped of its own: a stop
-// lands at a trick boundary, so the phase stays Playing and the round stays
-// unscored. getStatus() is what says the game is over; getPhase() says where in
-// the round it stopped.
+// Where in a round the game is. Deliberately has no Stopped of its own:
+// getStatus() is what says the game is over, and getPhase() is left saying
+// where the game had got to when it stopped. Which phase that is depends on
+// where the stop was raised - Playing for the usual case of a stop honoured at
+// a trick boundary, with the round left unscored, but RoundScored for one
+// raised in onRoundScored()/onRoundComplete() and honoured before the next
+// deal (that round *was* scored), and NotStarted for one honoured before the
+// first round was ever dealt.
 //
 // RoundScored spans BOTH onRoundScored and onRoundComplete. An observer that
 // needs to tell those apart uses the callback it is in, not getPhase().
@@ -211,9 +215,13 @@ public:
     void run();          // playRound() until the schedule runs out or a stop lands
     void playRound();    // deal, bet, play every trick, score, advance
 
-    // Ends cleanly at the next trick boundary; status -> Stopped, and observers
-    // get onGameStopped() rather than onGameOver(). Safe to call from another
-    // thread; it only sets an atomic flag.
+    // Ends cleanly at the next round or trick boundary; status -> Stopped, and
+    // observers get onGameStopped() rather than onGameOver(). Safe to call from
+    // another thread; it only sets an atomic flag.
+    //
+    // playRound() reads the flag before it deals, so a client driving rounds
+    // itself honours a stop at the same boundaries, in the same order, as one
+    // calling run().
     //
     // The boundary after a round's final trick counts, so a stop never scores
     // the round it landed in - not even one it caught on the last trick, and

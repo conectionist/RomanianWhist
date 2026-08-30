@@ -195,13 +195,11 @@ void GameEngine::run()
     requireInProgress();
 
     while(isInProgress())
-    {
-        if(honourStopIfRequested())
-            return;
-
         playRound();
-    }
 
+    // No stop check of its own: playRound() reads the flag before it deals, so
+    // the loop just sees isInProgress() go false and falls out.
+    //
     // onGameOver() and onGameStopped() are fired by playRound() and
     // honourStopIfRequested(), at the point the transition actually happens -
     // so a client driving playRound() itself is told the same things in the
@@ -211,6 +209,14 @@ void GameEngine::run()
 void GameEngine::playRound()
 {
     requireInProgress();
+
+    // The round boundary. Read here rather than in run()'s loop, because
+    // playRound() is a documented entry point in its own right: a client
+    // driving it directly used to deal a whole extra round after requestStop()
+    // and, with a human provider, ask three players to bid on a hand thrown
+    // away a moment later.
+    if(honourStopIfRequested())
+        return;
 
     dealRound();
     notifyRoundStarted();
@@ -268,12 +274,13 @@ void GameEngine::playRound()
     // No stop check between here and the end of the round: the flag is read at
     // boundaries, and past this point the round has none left. On any round but
     // the last, a stop raised inside onRoundScored()/onRoundComplete() is
-    // caught by run()'s check before the next deal - the round it was raised in
-    // is already scored and committed either way. On the last round there is no
-    // next deal, completeCurrentRound() has already moved the game to Finished,
-    // and a stop raised after that is a no-op: it names no round to abandon.
-    // The game finished before the stop was asked for, so onGameOver() is what
-    // fires and stopRequested stays raised with nothing left to answer it.
+    // caught by the check at the top of the next playRound() - the round it was
+    // raised in is already scored and committed either way. On the last round
+    // there is no next deal, completeCurrentRound() has already moved the game
+    // to Finished, and a stop raised after that is a no-op: it names no round
+    // to abandon. The game finished before the stop was asked for, so
+    // onGameOver() is what fires and stopRequested stays raised with nothing
+    // left to answer it.
     if(status == GameStatus::Finished)
         notifyGameOver();
 }
@@ -391,9 +398,9 @@ bool GameEngine::honourStopIfRequested()
     if(status == GameStatus::Stopped)
         return true;
 
-    // The phase is deliberately left where it was. A stop lands at a trick
-    // boundary with the round unscored, and getStatus() is what says the game
-    // is over - getPhase() says where in the round it stopped.
+    // The phase is deliberately left where it was, whatever it was: getStatus()
+    // is what says the game is over, and getPhase() is left saying where the
+    // game had got to. See GamePhase for which phases a stop can leave behind.
     status = GameStatus::Stopped;
     activeSeat.reset();
 
@@ -612,6 +619,15 @@ void GameEngine::completeCurrentRound()
         // the hook a client draws a round's result from. The phase goes back to
         // Betting at that round's deal.
         scoreboard.incrementCurrentRound();
+
+        // The trick number has to move with it. It counts tricks within the
+        // current round, so leaving the finished round's last trick number
+        // standing over the new index reports a trick the round it now names
+        // has not played - and, since the schedule's rounds differ in length,
+        // a number that round may not even reach: "trick 8 of 7" at
+        // onRoundComplete(), and at onGameStopped() if the stop lands here.
+        // dealRound() clears it too, but that is a round later than the index.
+        currentTrickNumber = 0;
     }
 }
 
