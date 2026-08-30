@@ -469,7 +469,8 @@ started, walks straight into it. The failure is a read of arbitrary memory, not 
 **The rule:** every accessor whose answer depends on a current round throws `std::logic_error`
 when `getStatus() == GameStatus::NotStarted`. `getStatus()`, `getPhase()`, `isInProgress()` and
 `getPlayerCount()` stay callable at all times and are how a client asks whether the rest are safe
-— `getPhase()` returning `GamePhase::NotStarted` is the supported way to find out.
+— ~~`getPhase()` returning `GamePhase::NotStarted` is the supported way to find out.~~ See the
+second correction below: it is `isSetUp()`.
 
 Implement it as one private `requireStarted()` guard rather than a check per accessor, so a
 future accessor cannot be added without one. Phase 2 adds the guard alongside the accessors; Phase 3
@@ -482,6 +483,16 @@ keeps it once `start()` is what sets the status.
 > for tests that legitimately read round state without setting a status. Phase 3's `start()` does
 > both at once and the two conditions become the same thing — at which point either spelling works
 > and this one still reads as the reason.
+
+> **Phase 2 correction (post-review): the predicate a client asks with is `isSetUp()`, not the
+> phase.** Keying the guard on `scoreboardInitialized` while still advertising
+> `getPhase() == GamePhase::NotStarted` as the way to ask left the two disagreeing, and the phase
+> is wrong in both directions — it is still `NotStarted` right through `onGameStarted`, where
+> every round-scoped accessor already answers, which `IGameObserver.h` promises in the same
+> breath. The real precondition was private, so a client had nothing honest to ask. `isSetUp()`
+> exposes it, joins `getStatus()`/`getPhase()`/`isInProgress()`/`getPlayerCount()` in the
+> always-callable set, and `getPhase()` now says explicitly that it does not answer this. Phase 3
+> can fold it into `getStatus() != NotStarted` once `start()` does both at once.
 
 **Two of these have no caller yet.** ~~`getBiddingOrder(Seat)` and~~ `Trick::getCardPlayedBy(Seat)`
 (§3.5) is not used by any phase or client migration in this plan. Every accessor added now costs a
@@ -1572,6 +1583,34 @@ were checked here — `placeBet`, `dealCards`, `completeCurrentRound`, `calculat
 `determineTrickWinner`, `getPlayer`, `Player::playCard`, `Player::getBet` — against a control that
 must still compile. A method that merely survives fails nothing, which is how `getPlayer()` would
 have quietly stayed reachable.
+
+#### What review found after the phase landed
+
+Four fixes on top of the above, all with the golden scores still unmoved. The first three are the
+same shape: the phase wrote three contracts down in prose and enforced two and a half of them.
+61 tests now, and each fix was confirmed to fail its new test before it was applied.
+
+- **`Stopped` and `Finished` were not actually terminal.** `setStatus()` accepted any transition,
+  so re-entering `InProgress` on a finished game and calling `run()` re-dealt the round the
+  schedule was still parked on, overwrote its bets, and threw `round already has all its tricks`
+  from inside `Round::addTrick` — two calls away from the mistake and phrased as a `Round`
+  problem. On a stopped game the stop flag is never cleared, so it also fired `onGameStopped` a
+  second time, against its own "Fires once". Both reproduced against the built library. `setStatus`
+  now rejects any move off a terminal status, and any move back to `NotStarted` — which would
+  otherwise make the next `InProgress` read as a first start and re-fire `onGameStarted`.
+- **A stop landing during a round's *final* trick scored that round anyway.** The flag is read at
+  the top of each trick iteration, and the last trick has no iteration after it — so the loop fell
+  through to `calculateScores()` and committed the very round the stop was meant to abandon,
+  contradicting `onGameStopped`'s "left unscored". On the *final* round it was worse: the game
+  ended `Finished` with `onGameOver` and `onGameStopped` never fired at all, despite
+  `requestStop()`'s unconditional "status -> Stopped", and `run()`'s own between-rounds check
+  cannot help because there is no next round to catch it at. `playRound()` reads the flag once
+  more after the trick loop.
+- **`getPhase()`'s documented use was a lie in both directions** — see the §3.3 correction above.
+  `isSetUp()` is the fix.
+- **`tests/ScriptedMoveProvider.h` used `std::find` without including `<algorithm>`.** It compiled
+  only because Catch2 happens to be included first in every current TU; a TU that includes the
+  header first failed (verified, then verified fixed).
 
 ---
 
