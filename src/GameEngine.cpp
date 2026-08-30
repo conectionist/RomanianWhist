@@ -90,6 +90,24 @@ void GameEngine::initializeDeck(unsigned int playerCount)
 
 void GameEngine::setStatus(GameStatus _status)
 {
+    // Finished and Stopped are terminal, and neither game is resumable. Say so
+    // here rather than let the transition through: a client that sets InProgress
+    // on a finished game and calls run() otherwise re-deals the round the
+    // schedule is still parked on, overwrites its bets, and dies inside
+    // Round::addTrick with "round already has all its tricks" - two calls away
+    // from the mistake and phrased as a Round problem. On a stopped game the
+    // stop flag is still raised, so run() would additionally fire
+    // onGameStopped() a second time, against its "Fires once" contract.
+    if(status == GameStatus::Finished || status == GameStatus::Stopped)
+        throw std::logic_error("GameEngine::setStatus: the game has already finished "
+                               "or been stopped, and neither is resumable");
+
+    // Nor can a game be un-started: the round stays dealt, and the next move
+    // back to InProgress would fire onGameStarted() all over again.
+    if(_status == GameStatus::NotStarted && status != GameStatus::NotStarted)
+        throw std::logic_error("GameEngine::setStatus: a game that has started cannot "
+                               "be returned to NotStarted");
+
     // Moving off NotStarted for the first time is the start of the game. Phase
     // 3 gives that transition its own method (start()) and this notification
     // moves there; until then this is the one place it can honestly happen,
@@ -116,6 +134,13 @@ bool GameEngine::isInProgress() const
 GamePhase GameEngine::getPhase() const
 {
     return phase;
+}
+
+bool GameEngine::isSetUp() const
+{
+    // The same condition requireStarted() guards on, which is what makes this
+    // an honest answer rather than a second opinion about it.
+    return scoreboardInitialized;
 }
 
 void GameEngine::addObserver(IGameObserver* observer)
@@ -191,6 +216,14 @@ void GameEngine::playRound()
         activeSeat.reset();
         notifyTrickWon(winner, trickNumber);
     }
+
+    // The last trick has no trick boundary after it, so the flag gets one last
+    // read here. Without this a stop requested during the final trick scores and
+    // commits the very round it was meant to abandon - and on the final round
+    // ends the game Finished with onGameOver(), so onGameStopped() never fires
+    // at all.
+    if(honourStopIfRequested())
+        return;
 
     // Scored but not committed, so an observer can show what the round was
     // worth alongside the total it is about to fold into.

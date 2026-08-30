@@ -124,9 +124,22 @@ public:
     bool isInProgress() const;
 
     // Where in the round the game is. Callable at any time, including before
-    // setup - GamePhase::NotStarted is the supported way for a client to ask
-    // whether the round-scoped accessors are safe to call yet.
+    // setup.
+    //
+    // It does NOT answer whether the round-scoped accessors are safe to call:
+    // those are keyed on the schedule existing, and the phase is still
+    // NotStarted right through onGameStarted(), where every one of them already
+    // answers. isSetUp() is that question.
     GamePhase getPhase() const;
+
+    // Whether the game has been set up far enough for the round-scoped
+    // accessors to answer - true once initializeScoreboard() has laid out the
+    // schedule, which is the precondition requireStarted() actually enforces.
+    //
+    // This, getStatus(), getPhase(), isInProgress() and getPlayerCount() are
+    // callable at any time; everything round-scoped throws std::logic_error
+    // until this is true. From Phase 3, start() is what makes it true.
+    bool isSetUp() const;
 
     // Non-owning. Observers must outlive the engine. Registering the same
     // observer twice is a no-op.
@@ -158,6 +171,10 @@ public:
     // Ends cleanly at the next trick boundary; status -> Stopped, and observers
     // get onGameStopped() rather than onGameOver(). Safe to call from another
     // thread; it only sets an atomic flag.
+    //
+    // The boundary after a round's final trick counts, so a stop never scores
+    // the round it landed in - not even one it caught on the last trick, and
+    // not even on the last round of the schedule.
     //
     // It cannot interrupt a move provider already parked waiting for a human:
     // the flag is only read between tricks and rounds. Unparking that provider

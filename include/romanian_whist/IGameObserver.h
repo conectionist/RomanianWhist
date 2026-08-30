@@ -90,7 +90,9 @@ public:
     virtual void onGameOver(const GameEngine&) {}
 
     // requestStop() was honoured at a trick boundary. Fires once, instead of
-    // onGameOver(). The round it stopped in is left unscored.
+    // onGameOver(). The round it stopped in is left unscored - including when
+    // the stop lands during that round's LAST trick, which is played out in
+    // full and then abandoned unscored like any other.
     virtual void onGameStopped(const GameEngine&) {}
 };
 

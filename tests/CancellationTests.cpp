@@ -33,16 +33,33 @@ struct Tally : IGameObserver
     GameEngine* stopAfterTrick = nullptr;
     unsigned int stopAfterTrickNumber = 0;
 
+    // Stop on the last trick of the last round instead of on a fixed trick
+    // number - the one boundary run() cannot catch, since there is no next
+    // round for it to check at.
+    bool stopOnFinalTrickOfGame = false;
+
     void onRoundStarted(const GameEngine&) override { roundsStarted++; }
     void onRoundScored(const GameEngine&) override { roundsScored++; }
     void onGameOver(const GameEngine&) override { gameOver++; }
     void onGameStopped(const GameEngine&) override { gameStopped++; }
 
-    void onTrickWon(const GameEngine&, Seat, unsigned int trickNumber) override
+    void onTrickWon(const GameEngine& engine, Seat, unsigned int trickNumber) override
     {
         tricksWon++;
 
-        if(stopAfterTrick != nullptr && trickNumber == stopAfterTrickNumber)
+        if(stopAfterTrick == nullptr)
+            return;
+
+        if(stopOnFinalTrickOfGame)
+        {
+            if(trickNumber == engine.getCurrentRoundTrickCount()
+               && engine.getCurrentRoundIndex() + 1 == engine.getRoundCount())
+                stopAfterTrick->requestStop();
+
+            return;
+        }
+
+        if(trickNumber == stopAfterTrickNumber)
             stopAfterTrick->requestStop();
     }
 };
@@ -170,4 +187,102 @@ TEST_CASE("A finished game cannot be run again", "[cancellation]")
 
     REQUIRE_THROWS_AS(engine->run(), std::logic_error);
     REQUIRE_THROWS_AS(engine->playRound(), std::logic_error);
+}
+
+TEST_CASE("A stop during a round's final trick leaves that round unscored", "[cancellation]")
+{
+    // The first S_818 round is eight tricks, so trick 8 is the last one - the
+    // trick with no boundary after it.
+    const auto engine = buildGame();
+    Tally tally;
+    tally.stopAfterTrick = engine.get();
+    tally.stopAfterTrickNumber = 8;
+
+    engine->addObserver(&tally);
+    engine->setStatus(GameStatus::InProgress);
+    engine->run();
+
+    REQUIRE(engine->getStatus() == GameStatus::Stopped);
+    REQUIRE(tally.gameStopped == 1);
+    REQUIRE(tally.gameOver == 0);
+
+    // The round was played out in full and then abandoned. Without a stop check
+    // after the trick loop this fell straight through to scoring and committed
+    // the very round the stop was meant to abandon.
+    REQUIRE(tally.tricksWon == 8);
+    REQUIRE(tally.roundsStarted == 1);
+    REQUIRE(tally.roundsScored == 0);
+    REQUIRE(engine->getCurrentRoundIndex() == 0);
+    REQUIRE(engine->getPhase() == GamePhase::Playing);
+}
+
+TEST_CASE("A stop on the last trick of the last round stops rather than finishes", "[cancellation]")
+{
+    const auto engine = buildGame(GameStructure::S_181);
+    Tally tally;
+    tally.stopAfterTrick = engine.get();
+    tally.stopOnFinalTrickOfGame = true;
+
+    engine->addObserver(&tally);
+    engine->setStatus(GameStatus::InProgress);
+    engine->run();
+
+    // The stop wins. run()'s own boundary check cannot help here - the schedule
+    // has no next round to catch it at - so the game used to end Finished with
+    // onGameOver() and never fire onGameStopped() at all, despite requestStop()
+    // promising status -> Stopped.
+    REQUIRE(engine->getStatus() == GameStatus::Stopped);
+    REQUIRE(tally.gameStopped == 1);
+    REQUIRE(tally.gameOver == 0);
+
+    // Every round but the last scored; the last one abandoned like any other.
+    REQUIRE(tally.roundsScored == engine->getRoundCount() - 1);
+    REQUIRE(engine->getCurrentRoundIndex() + 1 == engine->getRoundCount());
+    REQUIRE(engine->getPhase() == GamePhase::Playing);
+}
+
+TEST_CASE("A terminal game cannot be restarted through setStatus", "[cancellation]")
+{
+    SECTION("a stopped one")
+    {
+        const auto engine = buildGame();
+        Tally tally;
+        engine->addObserver(&tally);
+
+        engine->setStatus(GameStatus::InProgress);
+        engine->requestStop();
+        engine->run();
+
+        REQUIRE(engine->getStatus() == GameStatus::Stopped);
+
+        // This used to be allowed, and the stop flag is never cleared - so the
+        // restarted engine stopped again at once and fired onGameStopped() a
+        // second time, against its "Fires once" contract.
+        REQUIRE_THROWS_AS(engine->setStatus(GameStatus::InProgress), std::logic_error);
+
+        REQUIRE(engine->getStatus() == GameStatus::Stopped);
+        REQUIRE(tally.gameStopped == 1);
+    }
+
+    SECTION("a finished one")
+    {
+        const auto engine = buildGame(GameStructure::S_181);
+        Tally tally;
+        engine->addObserver(&tally);
+
+        engine->setStatus(GameStatus::InProgress);
+        engine->run();
+
+        REQUIRE(engine->getStatus() == GameStatus::Finished);
+
+        // This used to be allowed too, and left the engine InProgress on a
+        // schedule still parked at its last round: run() re-dealt that round,
+        // overwrote its bets, and threw from inside Round::addTrick - two calls
+        // away from the mistake.
+        REQUIRE_THROWS_AS(engine->setStatus(GameStatus::InProgress), std::logic_error);
+
+        REQUIRE(engine->getStatus() == GameStatus::Finished);
+        REQUIRE(tally.gameOver == 1);
+        REQUIRE(tally.roundsScored == engine->getRoundCount());
+    }
 }

@@ -83,12 +83,37 @@ TEST_CASE("GameEngine fires onGameStarted when the game starts", "[observer]")
     // still NotStarted until the first deal moves it to Betting.
     REQUIRE(observer.phaseAtStart == GamePhase::NotStarted);
 
-    SECTION("and only once, however often the status is set again")
+    SECTION("and only once, however often InProgress is set again")
     {
         engine.setStatus(GameStatus::InProgress);
-        engine.setStatus(GameStatus::Finished);
         engine.setStatus(GameStatus::InProgress);
 
+        REQUIRE(observer.gameStarted == 1);
+    }
+
+    SECTION("and a finished game cannot be restarted into a second one")
+    {
+        engine.setStatus(GameStatus::Finished);
+
+        // Finished is terminal. This transition used to be allowed and merely
+        // not re-notify - which left the engine InProgress on a schedule parked
+        // at its last round, so run() re-dealt that round and died inside
+        // Round::addTrick rather than here.
+        REQUIRE_THROWS_AS(engine.setStatus(GameStatus::InProgress), std::logic_error);
+
+        REQUIRE(engine.getStatus() == GameStatus::Finished);
+        REQUIRE(observer.gameStarted == 1);
+    }
+
+    SECTION("and a started game cannot be returned to NotStarted")
+    {
+        engine.setStatus(GameStatus::InProgress);
+
+        // Otherwise the next move back to InProgress reads as a first start and
+        // fires onGameStarted() again, on a game that is already part-played.
+        REQUIRE_THROWS_AS(engine.setStatus(GameStatus::NotStarted), std::logic_error);
+
+        REQUIRE(engine.getStatus() == GameStatus::InProgress);
         REQUIRE(observer.gameStarted == 1);
     }
 }

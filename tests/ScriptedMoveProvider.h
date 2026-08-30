@@ -6,6 +6,7 @@
 #include <romanian_whist/IMoveProvider.h>
 #include <romanian_whist/PlayContext.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <optional>
 #include <vector>

@@ -199,8 +199,9 @@ TEST_CASE("Round-scoped accessors throw before the game is set up", "[game-engin
     REQUIRE_THROWS_AS(engine.getBet(Seat{0}), std::logic_error);
     REQUIRE_THROWS_AS(engine.getTricksWon(Seat{0}), std::logic_error);
 
-    // These four answer at any time, and are how a client asks whether the rest
-    // are safe to call yet.
+    // These answer at any time, and isSetUp() is the one that says whether the
+    // rest are safe to call yet.
+    REQUIRE_FALSE(engine.isSetUp());
     REQUIRE(engine.getPhase() == GamePhase::NotStarted);
     REQUIRE(engine.getStatus() == GameStatus::NotStarted);
     REQUIRE_FALSE(engine.isInProgress());
@@ -209,9 +210,42 @@ TEST_CASE("Round-scoped accessors throw before the game is set up", "[game-engin
 
     engine.initializeScoreboard(GameStructure::S_181, false, false);
 
+    REQUIRE(engine.isSetUp());
     REQUIRE_NOTHROW(engine.getCurrentRound());
     REQUIRE_NOTHROW(engine.getCurrentTrick());
     REQUIRE(engine.getCurrentTrickNumber() == 0u);
+}
+
+TEST_CASE("isSetUp(), not the phase, is what says the accessors are safe", "[game-engine]")
+{
+    // getPhase() used to advertise itself for this, and is wrong in both
+    // directions: it is still NotStarted throughout onGameStarted(), where every
+    // round-scoped accessor already answers.
+    struct Checker : IGameObserver
+    {
+        bool checked = false;
+
+        void onGameStarted(const GameEngine& engine) override
+        {
+            checked = true;
+
+            REQUIRE(engine.getPhase() == GamePhase::NotStarted);
+            REQUIRE(engine.isSetUp());
+            REQUIRE_NOTHROW(engine.getCurrentRoundTrickCount());
+            REQUIRE_NOTHROW(engine.getRoundLeaderSeat());
+        }
+    };
+
+    GameEngine engine(1u);
+    addPlayers(engine, 3);
+    engine.initializeScoreboard(GameStructure::S_181, false, false);
+    engine.initializeDeck(3);
+
+    Checker checker;
+    engine.addObserver(&checker);
+    engine.setStatus(GameStatus::InProgress);
+
+    REQUIRE(checker.checked);
 }
 
 TEST_CASE("GameEngine::getBiddingOrder counts round from the round leader", "[game-engine]")
