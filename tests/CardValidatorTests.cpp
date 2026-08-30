@@ -126,3 +126,57 @@ TEST_CASE("CardValidator::beats", "[card-validator]")
         REQUIRE_FALSE(CardValidator::beats(candidate, best, leadSuit, nullptr));
     }
 }
+
+TEST_CASE("CardValidator::getWinningCard", "[card-validator]")
+{
+    // The ranking half of what GameEngine::determineTrickWinner() used to be
+    // tested for directly. That method is the engine's own business now, but
+    // the rule it applies is this one, and it is still worth pinning where it
+    // can be asserted without a whole game around it.
+    Card heartsTwo(Rank::Two, Suit::Hearts);
+    Card heartsKing(Rank::King, Suit::Hearts);
+    Card spadesAce(Rank::Ace, Suit::Spades);
+    Card clubsThree(Rank::Three, Suit::Clubs);
+
+    SECTION("an empty trick has no winning card")
+    {
+        REQUIRE(CardValidator::getWinningCard({}, Suit::Hearts, nullptr) == nullptr);
+    }
+
+    SECTION("the highest card of the lead suit wins")
+    {
+        const std::vector<Card*> played{ &heartsTwo, &heartsKing };
+
+        REQUIRE(CardValidator::getWinningCard(played, Suit::Hearts, nullptr) == &heartsKing);
+    }
+
+    SECTION("an off-suit card does not win, however high")
+    {
+        const std::vector<Card*> played{ &heartsTwo, &spadesAce };
+
+        REQUIRE(CardValidator::getWinningCard(played, Suit::Hearts, nullptr) == &heartsTwo);
+    }
+
+    SECTION("a trump beats the lead suit")
+    {
+        Card trumpCard(Rank::Two, Suit::Clubs);
+        const std::vector<Card*> played{ &heartsKing, &clubsThree };
+
+        REQUIRE(CardValidator::getWinningCard(played, Suit::Hearts, &trumpCard) == &clubsThree);
+    }
+
+    SECTION("it ranks a partly played trick, which is what the live highlight needs")
+    {
+        // A client shows who is currently winning as the cards go down, so this
+        // is asked once per card rather than once per trick.
+        std::vector<Card*> played{ &heartsTwo };
+        REQUIRE(CardValidator::getWinningCard(played, Suit::Hearts, nullptr) == &heartsTwo);
+
+        played.push_back(&heartsKing);
+        REQUIRE(CardValidator::getWinningCard(played, Suit::Hearts, nullptr) == &heartsKing);
+
+        // The last card cannot follow, so the standing winner is unchanged.
+        played.push_back(&spadesAce);
+        REQUIRE(CardValidator::getWinningCard(played, Suit::Hearts, nullptr) == &heartsKing);
+    }
+}
