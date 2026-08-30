@@ -91,18 +91,19 @@ TEST_CASE("GameEngine fires onGameStarted when the game starts", "[observer]")
         REQUIRE(observer.gameStarted == 1);
     }
 
-    SECTION("and a finished game cannot be restarted into a second one")
+    SECTION("and neither ending can be asked for from outside")
     {
-        engine.setStatus(GameStatus::Finished);
+        // Both terminal states belong to the engine, and both owe observers a
+        // callback: onGameOver() arrives with the last round, onGameStopped()
+        // at the trick boundary requestStop() lands on. Writing either here
+        // used to be allowed and notified nobody, which left every renderer
+        // parked on a game that had silently ended - and unrecoverably so,
+        // since a terminal status refuses to go back to InProgress.
+        REQUIRE_THROWS_AS(engine.setStatus(GameStatus::Finished), std::logic_error);
+        REQUIRE_THROWS_AS(engine.setStatus(GameStatus::Stopped), std::logic_error);
 
-        // Finished is terminal. This transition used to be allowed and merely
-        // not re-notify - which left the engine InProgress on a schedule parked
-        // at its last round, so run() re-dealt that round and died inside
-        // Round::addTrick rather than here.
-        REQUIRE_THROWS_AS(engine.setStatus(GameStatus::InProgress), std::logic_error);
-
-        REQUIRE(engine.getStatus() == GameStatus::Finished);
-        REQUIRE(observer.gameStarted == 1);
+        REQUIRE(engine.getStatus() == GameStatus::InProgress);
+        REQUIRE(engine.isInProgress());
     }
 
     SECTION("and a started game cannot be returned to NotStarted")
@@ -277,6 +278,79 @@ TEST_CASE("The observer list cannot be changed from inside a callback", "[observ
         REQUIRE_NOTHROW(engine.removeObserver(&mutator));
         REQUIRE_NOTHROW(engine.addObserver(&next));
     }
+}
+
+TEST_CASE("A nested dispatch leaves the outer one guarded", "[observer]")
+{
+    // An observer is free to call back into the engine from a callback, and
+    // playRound() dispatches in its own right - so dispatches nest. The guard
+    // is what makes the outer walk safe, and it has to survive the inner one
+    // finishing: the flag is restored on the way out, not cleared, or every
+    // observer after the nested caller could mutate the list mid-walk.
+    struct NestingObserver : IGameObserver
+    {
+        GameEngine* engine = nullptr;
+        bool nested = false;
+
+        void onGameStarted(const GameEngine&) override
+        {
+            // Registered first, so this runs while the walk still has two
+            // observers to go.
+            engine->playRound();
+            nested = true;
+        }
+    };
+
+    auto enginePtr = buildEngine(3);
+    GameEngine& engine = *enginePtr;
+
+    struct RemovingObserver : IGameObserver
+    {
+        GameEngine* engine = nullptr;
+        bool threw = false;
+        unsigned int gameStarted = 0;
+
+        void onGameStarted(const GameEngine&) override
+        {
+            gameStarted++;
+
+            try
+            {
+                engine->removeObserver(this);
+            }
+            catch(const std::logic_error&)
+            {
+                threw = true;
+            }
+        }
+    };
+
+    NestingObserver nester;
+    RemovingObserver remover;
+    CountingObserver last;
+    nester.engine = &engine;
+    remover.engine = &engine;
+
+    engine.addObserver(&nester);
+    engine.addObserver(&remover);
+    engine.addObserver(&last);
+
+    engine.setStatus(GameStatus::InProgress);
+
+    REQUIRE(nester.nested);
+
+    // The removal is still refused, even though a whole round's worth of
+    // dispatches has begun and ended since the outer walk started.
+    REQUIRE(remover.threw);
+
+    // Which is the point: an accepted removal here shifts `last` down under an
+    // iterator that has already passed `remover`, and the walk then reads the
+    // slot past the vector's new size.
+    REQUIRE(remover.gameStarted == 1);
+    REQUIRE(last.gameStarted == 1);
+
+    // And the ban still lifts once the outer walk is over.
+    REQUIRE_NOTHROW(engine.removeObserver(&remover));
 }
 
 // ---------------------------------------------------------------------------

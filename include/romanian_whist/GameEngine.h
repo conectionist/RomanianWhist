@@ -81,6 +81,10 @@ private:
     private:
         GameEngine& engine;
 
+        // Dispatches nest when an observer calls back into the engine, so the
+        // flag is restored on the way out rather than cleared.
+        bool wasDispatching;
+
     public:
         explicit DispatchGuard(GameEngine& engine);
         ~DispatchGuard();
@@ -149,6 +153,12 @@ public:
     // on an engine with no round schedule every one of them throws instead.
     // The guard also freezes the table at the moment the game starts, since
     // addPlayer() is rejected from initializeScoreboard() onwards.
+    //
+    // Starting is the only thing this method does: Finished and Stopped are
+    // rejected with std::logic_error, because ending a game is the engine's
+    // call and carries a callback with it - onGameOver() with the last round,
+    // onGameStopped() at the trick boundary requestStop() lands on. Call
+    // requestStop() to stop a game.
     void setStatus(GameStatus _status);
     GameStatus getStatus() const;
     bool isInProgress() const;

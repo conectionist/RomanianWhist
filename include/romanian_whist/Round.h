@@ -90,7 +90,9 @@ public:
 
     // Appends to the trick in flight, setting the lead suit from the first
     // card. Throws std::out_of_range for a seat that is not at this table, and
-    // std::logic_error if the trick is already full or the card is null.
+    // std::logic_error if the card is null, if the trick is already full, or if
+    // that seat has already played in it - one card per seat, so a trick can
+    // never rank one seat twice while another never plays.
     void addCardToCurrentTrick(Seat seat, Card* card);
 
     // Names the winner of the trick in flight and files it among the completed

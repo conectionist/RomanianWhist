@@ -103,6 +103,20 @@ void GameEngine::setStatus(GameStatus _status)
         throw std::logic_error("GameEngine::setStatus: the game has already finished "
                                "or been stopped, and neither is resumable");
 
+    // Nor can a client put the game into either terminal state itself. Both are
+    // the engine's to declare, and both owe observers a callback at the moment
+    // they happen: completeCurrentRound() ends the game Finished and fires
+    // onGameOver(), honourStopIfRequested() ends it Stopped and fires
+    // onGameStopped(). Letting this method write either would strand every
+    // observer on a game that has silently ended - and the terminal guard above
+    // then makes that unrecoverable. Stopping is what requestStop() is for; it
+    // lands the stop at the next trick boundary with the notification attached.
+    if(_status == GameStatus::Finished || _status == GameStatus::Stopped)
+        throw std::logic_error("GameEngine::setStatus: only the engine ends a game - "
+                               "Finished arrives with the last round, and Stopped is "
+                               "what requestStop() asks for. Setting either here would "
+                               "end the game without telling a single observer");
+
     // Nor can a game be un-started: the round stays dealt, and the next move
     // back to InProgress would fire onGameStarted() all over again.
     if(_status == GameStatus::NotStarted && status != GameStatus::NotStarted)
@@ -756,14 +770,20 @@ bool GameEngine::cardBeats(const Card& candidate, const Card& currentBest, Suit 
 // each one raises the flag those two check.
 
 GameEngine::DispatchGuard::DispatchGuard(GameEngine& engine)
-    : engine(engine)
+    : engine(engine), wasDispatching(engine.dispatching)
 {
     engine.dispatching = true;
 }
 
 GameEngine::DispatchGuard::~DispatchGuard()
 {
-    engine.dispatching = false;
+    // Restored rather than cleared, because dispatches nest: an observer that
+    // calls back into the engine from a callback (run(), playRound()) walks the
+    // list again inside the outer walk, and clearing here would leave the outer
+    // one unguarded for the rest of its iteration - the removeObserver() it
+    // exists to reject would be accepted, and the range-for would then read
+    // past the vector it is halfway through.
+    engine.dispatching = wasDispatching;
 }
 
 void GameEngine::requireNotDispatching(const char* caller) const

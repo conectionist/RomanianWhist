@@ -105,10 +105,17 @@ void Round::addCardToCurrentTrick(Seat seat, Card* card)
     if(seat.index >= bets.size())
         throw std::out_of_range("Round::addCardToCurrentTrick: seat out of range");
 
-    // One card per seat: a trick with more entries than there are seats would
-    // rank a card twice and hand the trick to whoever played last.
+    // One card per seat, both ways round: more entries than seats would rank a
+    // card twice and hand the trick to whoever played last, and a seat playing
+    // twice does the same thing while leaving another seat short - which the
+    // size check alone never sees.
     if(currentTrick.getPlayedCards().size() >= bets.size())
         throw std::logic_error("Round::addCardToCurrentTrick: trick already has a card from every seat");
+
+    for(const PlayedCard& played : currentTrick.getPlayedCards())
+        if(played.seat.index == seat.index)
+            throw std::logic_error("Round::addCardToCurrentTrick: that seat has already "
+                                   "played a card in this trick");
 
     // The first card sets the suit everyone else has to follow. Doing it here
     // rather than leaving it to the caller is the point of the round owning the
