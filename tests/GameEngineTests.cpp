@@ -372,13 +372,18 @@ TEST_CASE("playRound() requires the deck and the scoreboard", "[game-engine]")
         REQUIRE_THROWS_AS(engine.playRound(), std::logic_error);
     }
 
-    SECTION("without initializeScoreboard it throws instead of reading a missing round")
+    SECTION("without initializeScoreboard the game cannot even be started")
     {
+        // The missing round is caught a step earlier than the missing deck:
+        // setStatus() will not start a game with no schedule, so playRound()'s
+        // own requireStarted() is no longer reachable from here. Both throw
+        // std::logic_error and neither lets a round be played, which is what
+        // this section is actually for.
         GameEngine engine;
         addPlayers(engine, 3);
         engine.initializeDeck(3);
-        engine.setStatus(GameStatus::InProgress);
 
+        REQUIRE_THROWS_AS(engine.setStatus(GameStatus::InProgress), std::logic_error);
         REQUIRE_THROWS_AS(engine.playRound(), std::logic_error);
     }
 
@@ -391,6 +396,58 @@ TEST_CASE("playRound() requires the deck and the scoreboard", "[game-engine]")
         engine.setStatus(GameStatus::InProgress);
 
         REQUIRE_NOTHROW(engine.playRound());
+    }
+}
+
+TEST_CASE("setStatus refuses to start a game that is not set up", "[game-engine]")
+{
+    // onGameStarted() promises observers an engine they can read - the round
+    // count, the round leader, the trick count all answer there. On an engine
+    // with no schedule every one of those throws instead, out of setStatus()
+    // itself, so the start is what has to be rejected.
+    struct StartWatcher : IGameObserver
+    {
+        unsigned int gameStarted = 0;
+
+        void onGameStarted(const GameEngine&) override { gameStarted++; }
+    };
+
+    SECTION("starting before initializeScoreboard throws and fires nothing")
+    {
+        GameEngine engine;
+        addPlayers(engine, 3);
+        engine.initializeDeck(3);
+
+        StartWatcher watcher;
+        engine.addObserver(&watcher);
+
+        REQUIRE_THROWS_AS(engine.setStatus(GameStatus::InProgress), std::logic_error);
+
+        // The rejected start left nothing behind: no callback, and a status
+        // that can still be moved to InProgress once the schedule exists.
+        REQUIRE(watcher.gameStarted == 0);
+        REQUIRE(engine.getStatus() == GameStatus::NotStarted);
+        REQUIRE_FALSE(engine.isSetUp());
+
+        engine.initializeScoreboard(GameStructure::S_181, false, false);
+        REQUIRE_NOTHROW(engine.setStatus(GameStatus::InProgress));
+        REQUIRE(watcher.gameStarted == 1);
+    }
+
+    SECTION("the table is fixed by the time the game starts")
+    {
+        // The guard doubles as the point the seats stop moving: a start now
+        // implies initializeScoreboard(), which is already what closes
+        // addPlayer(). No player can join after onGameStarted() has announced
+        // the table.
+        GameEngine engine;
+        addPlayers(engine, 3);
+        engine.initializeScoreboard(GameStructure::S_181, false, false);
+        engine.initializeDeck(3);
+        engine.setStatus(GameStatus::InProgress);
+
+        REQUIRE_THROWS_AS(engine.addPlayer("late", dummyProvider()), std::logic_error);
+        REQUIRE(engine.getPlayerCount() == 3);
     }
 }
 

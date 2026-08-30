@@ -66,6 +66,29 @@ private:
     // Non-owning. Registration order is dispatch order.
     std::vector<IGameObserver*> observers;
 
+    // True while a notify* helper is walking `observers`. addObserver() and
+    // removeObserver() consult it and throw, because mutating the vector under
+    // that walk invalidates it - see their declarations below.
+    bool dispatching = false;
+
+    // Raises `dispatching` for the duration of one dispatch and lowers it on
+    // the way out, including when a callback throws. That case leaves the
+    // engine unusable anyway (see run()), but an unbalanced flag would turn a
+    // client's attempt to detach its observers during teardown into a second,
+    // more confusing exception.
+    class DispatchGuard
+    {
+    private:
+        GameEngine& engine;
+
+    public:
+        explicit DispatchGuard(GameEngine& engine);
+        ~DispatchGuard();
+
+        DispatchGuard(const DispatchGuard&) = delete;
+        DispatchGuard& operator=(const DispatchGuard&) = delete;
+    };
+
     GamePhase phase = GamePhase::NotStarted;
 
     // Whose turn it is right now; disengaged between turns. Held here rather
@@ -119,6 +142,13 @@ public:
     // what fires onGameStarted() - so register every observer before calling
     // it. Phase 3 of ENGINE_V4_PLAN.md folds this into start(); until then it
     // is the client's job to remember.
+    //
+    // Starting throws std::logic_error unless isSetUp(), because
+    // onGameStarted() promises its observers a set-up engine: every
+    // round-scoped accessor already answers there (see IGameObserver.h), and
+    // on an engine with no round schedule every one of them throws instead.
+    // The guard also freezes the table at the moment the game starts, since
+    // addPlayer() is rejected from initializeScoreboard() onwards.
     void setStatus(GameStatus _status);
     GameStatus getStatus() const;
     bool isInProgress() const;
@@ -146,8 +176,11 @@ public:
     //
     // Neither may be called from inside a callback: the engine iterates its
     // observer list while dispatching, so adding or removing mid-dispatch
-    // invalidates that iteration. An observer that wants to detach sets a flag
-    // and lets the client detach it between rounds.
+    // invalidates that iteration. Both throw std::logic_error rather than
+    // corrupt the walk in progress - a removal would otherwise skip the next
+    // observer silently and dispatch the last one twice, from a slot past the
+    // vector's own end. An observer that wants to detach sets a flag and lets
+    // the client detach it between rounds.
     //
     // Unlike requestStop(), NEITHER IS THREAD-SAFE. The engine has no internal
     // locking anywhere, so calling these from a second thread while the game
@@ -175,6 +208,13 @@ public:
     // The boundary after a round's final trick counts, so a stop never scores
     // the round it landed in - not even one it caught on the last trick, and
     // not even on the last round of the schedule.
+    //
+    // A stop requested after the last round has been scored - from
+    // onRoundScored() or onRoundComplete() on the final round, or any time
+    // after the game reaches Finished - is a no-op: there is no round left to
+    // abandon and no boundary left to land on, so the game stays Finished and
+    // onGameOver(), not onGameStopped(), is what fired. Finished and Stopped
+    // are both terminal and the game reached one of them first.
     //
     // It cannot interrupt a move provider already parked waiting for a human:
     // the flag is only read between tricks and rounds. Unparking that provider
@@ -311,6 +351,10 @@ private:
     // run() and playRound() need a live game. Also what stops a second run() on
     // an engine that has finished or been stopped.
     void requireInProgress() const;
+
+    // Rejects a change to the observer list made from inside a callback.
+    // `caller` names the method for the message.
+    void requireNotDispatching(const char* caller) const;
 
     // The three stages of a round, kept separate so that each one's place in
     // the callback order is readable. All of them advance state that lives in

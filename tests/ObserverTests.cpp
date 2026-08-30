@@ -177,6 +177,108 @@ TEST_CASE("GameEngine dispatches to every registered observer", "[observer]")
     REQUIRE(second.gameStarted == 1);
 }
 
+TEST_CASE("The observer list cannot be changed from inside a callback", "[observer]")
+{
+    // Dispatch walks `observers` directly. A removal mid-walk shifts the tail
+    // down under the iterator, so the next observer is skipped and the last one
+    // is called twice - the second time from a slot past the vector's own end.
+    // Both are rejected instead, loudly, like every other misuse the engine
+    // guards.
+    struct SelfMutatingObserver : IGameObserver
+    {
+        GameEngine* engine = nullptr;
+
+        // What to attempt from inside the callback, and what came back.
+        bool removeSelf = false;
+        IGameObserver* observerToAdd = nullptr;
+
+        unsigned int gameStarted = 0;
+        bool threw = false;
+
+        void onGameStarted(const GameEngine&) override
+        {
+            gameStarted++;
+
+            try
+            {
+                if(removeSelf)
+                    engine->removeObserver(this);
+
+                if(observerToAdd != nullptr)
+                    engine->addObserver(observerToAdd);
+            }
+            catch(const std::logic_error&)
+            {
+                threw = true;
+            }
+        }
+    };
+
+    auto enginePtr = buildEngine(3);
+    GameEngine& engine = *enginePtr;
+
+    SelfMutatingObserver mutator;
+    CountingObserver next;
+    CountingObserver last;
+    mutator.engine = &engine;
+
+    SECTION("removing from inside a callback throws and leaves the walk intact")
+    {
+        // Registered first, so the erase shifts the whole tail down under an
+        // iterator that has already passed it. Unguarded, that is what skips
+        // `next` and dispatches `last` twice - the second time from the slot
+        // the erase left behind, past the vector's own size.
+        mutator.removeSelf = true;
+
+        engine.addObserver(&mutator);
+        engine.addObserver(&next);
+        engine.addObserver(&last);
+        engine.setStatus(GameStatus::InProgress);
+
+        REQUIRE(mutator.threw);
+
+        // The list the walk started with is the list it finished with: each of
+        // the three told exactly once, nobody skipped and nobody told twice.
+        REQUIRE(mutator.gameStarted == 1);
+        REQUIRE(next.gameStarted == 1);
+        REQUIRE(last.gameStarted == 1);
+
+        // And the refusal left the list alone rather than half-mutating it.
+        REQUIRE_NOTHROW(engine.removeObserver(&mutator));
+    }
+
+    SECTION("adding from inside a callback throws too")
+    {
+        CountingObserver latecomer;
+        mutator.observerToAdd = &latecomer;
+
+        engine.addObserver(&mutator);
+        engine.setStatus(GameStatus::InProgress);
+
+        REQUIRE(mutator.threw);
+
+        // A push_back mid-walk can reallocate the vector out from under the
+        // iterator, so this is rejected for the same reason - and the observer
+        // that did not exist when the event began is not told about it.
+        REQUIRE(latecomer.gameStarted == 0);
+    }
+
+    SECTION("the ban lifts once the dispatch is over")
+    {
+        // The flag is lowered on the way out of every dispatch, including one a
+        // callback threw through, so a client tearing its observers down after
+        // the game is not met with a stale refusal.
+        mutator.removeSelf = true;
+
+        engine.addObserver(&mutator);
+        engine.setStatus(GameStatus::InProgress);
+
+        REQUIRE(mutator.threw);
+        REQUIRE_NOTHROW(engine.removeObserver(&mutator));
+        REQUIRE_NOTHROW(engine.addObserver(&next));
+    }
+}
+
 // ---------------------------------------------------------------------------
 // The loop as seen from outside. IGameObserver.h promises not just an order of
 // callbacks but a particular engine state visible inside each one, and those

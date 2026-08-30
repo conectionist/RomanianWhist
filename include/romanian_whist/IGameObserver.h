@@ -23,6 +23,11 @@ class GameEngine;
 // thread running the game. A client whose UI lives on another thread must
 // snapshot by value inside the callback and hand the snapshot across.
 //
+// A callback must not add or remove observers - the engine is walking that list
+// to reach this call, and both throw std::logic_error rather than corrupt the
+// walk. An observer that wants to detach sets a flag and lets the client detach
+// it between rounds. requestStop() is the one thing a callback may always do.
+//
 // Parameters are unnamed so that a no-op override does not have to silence an
 // unused-parameter warning; each is named in the comment above it.
 class IGameObserver
@@ -93,6 +98,11 @@ public:
     // onGameOver(). The round it stopped in is left unscored - including when
     // the stop lands during that round's LAST trick, which is played out in
     // full and then abandoned unscored like any other.
+    //
+    // A stop asked for once the last round is already scored has no boundary
+    // left to land on, so it does not fire this: onRoundScored() and
+    // onRoundComplete() on the final round both run after the game has reached
+    // Finished, and the game that got there first is the one that reports.
     virtual void onGameStopped(const GameEngine&) {}
 };
 

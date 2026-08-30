@@ -241,6 +241,78 @@ TEST_CASE("A stop on the last trick of the last round stops rather than finishes
     REQUIRE(engine->getPhase() == GamePhase::Playing);
 }
 
+TEST_CASE("A stop requested after the last round has been scored is a no-op", "[cancellation]")
+{
+    // The boundary the flag is read at is the one before a round's work, and
+    // after the final round's scoring there is none left. On any earlier round
+    // run() catches this stop before the next deal; on the last one the game is
+    // already Finished by the time the callback runs, so the stop names no
+    // round to abandon and Finished stands.
+    struct LateStopper : IGameObserver
+    {
+        GameEngine* engine = nullptr;
+        bool stopOnScored = false;
+
+        unsigned int gameOver = 0;
+        unsigned int gameStopped = 0;
+        unsigned int roundsScored = 0;
+
+        void onGameOver(const GameEngine&) override { gameOver++; }
+        void onGameStopped(const GameEngine&) override { gameStopped++; }
+
+        void onRoundScored(const GameEngine& e) override
+        {
+            roundsScored++;
+
+            if(stopOnScored && e.getCurrentRoundIndex() + 1 == e.getRoundCount())
+                engine->requestStop();
+        }
+
+        void onRoundComplete(const GameEngine& e) override
+        {
+            if(!stopOnScored && e.getStatus() == GameStatus::Finished)
+                engine->requestStop();
+        }
+    };
+
+    LateStopper stopper;
+
+    SECTION("from onRoundScored on the final round")
+    {
+        stopper.stopOnScored = true;
+    }
+
+    SECTION("from onRoundComplete on the final round")
+    {
+        stopper.stopOnScored = false;
+    }
+
+    const auto engine = buildGame(GameStructure::S_181);
+    stopper.engine = engine.get();
+
+    engine->addObserver(&stopper);
+    engine->setStatus(GameStatus::InProgress);
+    engine->run();
+
+    // Finished wins, and run() does not turn round and report a stop it can no
+    // longer honour - onGameOver() has already told the observers the game was
+    // over on its own terms.
+    REQUIRE(engine->getStatus() == GameStatus::Finished);
+    REQUIRE(stopper.gameOver == 1);
+    REQUIRE(stopper.gameStopped == 0);
+
+    // The whole schedule played, including the round the stop was raised in -
+    // which is the same treatment an earlier round gets, since a stop raised
+    // after a round is scored never un-scores it.
+    REQUIRE(stopper.roundsScored == engine->getRoundCount());
+    REQUIRE(engine->getPhase() == GamePhase::GameOver);
+
+    // Terminal is terminal: the raised flag does not let the game be restarted
+    // and then stopped, which would fire onGameStopped() after onGameOver().
+    REQUIRE_THROWS_AS(engine->setStatus(GameStatus::InProgress), std::logic_error);
+    REQUIRE(stopper.gameStopped == 0);
+}
+
 TEST_CASE("A terminal game cannot be restarted through setStatus", "[cancellation]")
 {
     SECTION("a stopped one")

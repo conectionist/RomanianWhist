@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 namespace romanian_whist
@@ -115,6 +116,18 @@ void GameEngine::setStatus(GameStatus _status)
     // event or misplace it onto the game thread.
     const bool starting = status == GameStatus::NotStarted && _status == GameStatus::InProgress;
 
+    // onGameStarted() hands observers an engine they are promised they can read
+    // - IGameObserver.h says every round-scoped accessor already answers there.
+    // Without a schedule built, requireStarted() makes liars of all of them and
+    // the first thing an observer asks throws back out of here. Rejecting the
+    // start is the honest answer, and it doubles as the point the table stops
+    // changing: addPlayer() is already closed from initializeScoreboard() on.
+    if(starting && !scoreboardInitialized)
+        throw std::logic_error("GameEngine::setStatus: the game cannot start before "
+                               "initializeScoreboard() has laid out the round "
+                               "schedule - onGameStarted() promises its observers "
+                               "an engine that is already set up");
+
     status = _status;
 
     if(starting)
@@ -148,6 +161,8 @@ void GameEngine::addObserver(IGameObserver* observer)
     if(observer == nullptr)
         throw std::invalid_argument("GameEngine::addObserver: observer must not be null");
 
+    requireNotDispatching("addObserver");
+
     if(std::find(observers.begin(), observers.end(), observer) != observers.end())
         return;
 
@@ -156,6 +171,8 @@ void GameEngine::addObserver(IGameObserver* observer)
 
 void GameEngine::removeObserver(IGameObserver* observer)
 {
+    requireNotDispatching("removeObserver");
+
     observers.erase(std::remove(observers.begin(), observers.end(), observer), observers.end());
 }
 
@@ -234,6 +251,15 @@ void GameEngine::playRound()
     completeCurrentRound();
     notifyRoundComplete();
 
+    // No stop check between here and the end of the round: the flag is read at
+    // boundaries, and past this point the round has none left. On any round but
+    // the last, a stop raised inside onRoundScored()/onRoundComplete() is
+    // caught by run()'s check before the next deal - the round it was raised in
+    // is already scored and committed either way. On the last round there is no
+    // next deal, completeCurrentRound() has already moved the game to Finished,
+    // and a stop raised after that is a no-op: it names no round to abandon.
+    // The game finished before the stop was asked for, so onGameOver() is what
+    // fires and stopRequested stays raised with nothing left to answer it.
     if(status == GameStatus::Finished)
         notifyGameOver();
 }
@@ -726,82 +752,129 @@ bool GameEngine::cardBeats(const Card& candidate, const Card& currentBest, Suit 
 // Dispatch. Each of these iterates `observers` directly rather than through a
 // shared template, so that a stack trace names the callback that threw.
 // Registering or removing an observer from inside one of these invalidates the
-// iteration, which is why addObserver()/removeObserver() forbid it.
+// iteration, which is why addObserver()/removeObserver() forbid it - and why
+// each one raises the flag those two check.
+
+GameEngine::DispatchGuard::DispatchGuard(GameEngine& engine)
+    : engine(engine)
+{
+    engine.dispatching = true;
+}
+
+GameEngine::DispatchGuard::~DispatchGuard()
+{
+    engine.dispatching = false;
+}
+
+void GameEngine::requireNotDispatching(const char* caller) const
+{
+    if(dispatching)
+        throw std::logic_error(std::string("GameEngine::") + caller + ": an observer "
+                               "list cannot be changed from inside a callback - the "
+                               "engine is iterating it. Set a flag and let the client "
+                               "add or remove between rounds");
+}
 
 void GameEngine::notifyGameStarted()
 {
+    DispatchGuard guard(*this);
+
     for(IGameObserver* observer : observers)
         observer->onGameStarted(*this);
 }
 
 void GameEngine::notifyRoundStarted()
 {
+    DispatchGuard guard(*this);
+
     for(IGameObserver* observer : observers)
         observer->onRoundStarted(*this);
 }
 
 void GameEngine::notifyBetRequested(Seat seat)
 {
+    DispatchGuard guard(*this);
+
     for(IGameObserver* observer : observers)
         observer->onBetRequested(*this, seat);
 }
 
 void GameEngine::notifyBetPlaced(Seat seat, unsigned int bet)
 {
+    DispatchGuard guard(*this);
+
     for(IGameObserver* observer : observers)
         observer->onBetPlaced(*this, seat, bet);
 }
 
 void GameEngine::notifyBettingComplete()
 {
+    DispatchGuard guard(*this);
+
     for(IGameObserver* observer : observers)
         observer->onBettingComplete(*this);
 }
 
 void GameEngine::notifyTrickStarted(unsigned int trickNumber, Seat leader)
 {
+    DispatchGuard guard(*this);
+
     for(IGameObserver* observer : observers)
         observer->onTrickStarted(*this, trickNumber, leader);
 }
 
 void GameEngine::notifyCardRequested(Seat seat)
 {
+    DispatchGuard guard(*this);
+
     for(IGameObserver* observer : observers)
         observer->onCardRequested(*this, seat);
 }
 
 void GameEngine::notifyCardPlayed(Seat seat, const Card& card)
 {
+    DispatchGuard guard(*this);
+
     for(IGameObserver* observer : observers)
         observer->onCardPlayed(*this, seat, card);
 }
 
 void GameEngine::notifyTrickWon(Seat winner, unsigned int trickNumber)
 {
+    DispatchGuard guard(*this);
+
     for(IGameObserver* observer : observers)
         observer->onTrickWon(*this, winner, trickNumber);
 }
 
 void GameEngine::notifyRoundScored()
 {
+    DispatchGuard guard(*this);
+
     for(IGameObserver* observer : observers)
         observer->onRoundScored(*this);
 }
 
 void GameEngine::notifyRoundComplete()
 {
+    DispatchGuard guard(*this);
+
     for(IGameObserver* observer : observers)
         observer->onRoundComplete(*this);
 }
 
 void GameEngine::notifyGameOver()
 {
+    DispatchGuard guard(*this);
+
     for(IGameObserver* observer : observers)
         observer->onGameOver(*this);
 }
 
 void GameEngine::notifyGameStopped()
 {
+    DispatchGuard guard(*this);
+
     for(IGameObserver* observer : observers)
         observer->onGameStopped(*this);
 }
