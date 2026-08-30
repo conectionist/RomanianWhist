@@ -35,8 +35,12 @@ enum class GameStatus
 // before the next deal (that round *was* scored), and NotStarted for one
 // honoured before the first round was ever dealt.
 //
-// RoundScored spans BOTH onRoundScored and onRoundComplete. An observer that
-// needs to tell those apart uses the callback it is in, not getPhase().
+// RoundScored spans onRoundScored and, on every round but the last,
+// onRoundComplete: the final round has already moved the game to GameOver by
+// the time onRoundComplete fires, so an observer that gates a round summary on
+// getPhase() == RoundScored there silently skips the last round. An observer
+// that needs to tell the two callbacks apart uses the callback it is in, not
+// getPhase().
 enum class GamePhase
 {
     NotStarted,
