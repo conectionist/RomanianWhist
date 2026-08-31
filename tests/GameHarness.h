@@ -33,6 +33,19 @@ std::unique_ptr<GameEngine> playFullGame(GameStructure structure,
                                          bool endWithForeheadAndHidden = false,
                                          bool all1GamesAreForehead = false);
 
+// The same setup playFullGame() builds, for a test that wants to start the game
+// itself - to register something between construction and start(), to drive
+// playRound() by hand, or to assert on start() rather than on a played game.
+// Seats are named "P0".."Pn" in provider order.
+//
+// GameSetup owns the providers and is move-only, so this returns by value and
+// every call site reads game.start(buildSetup(...)).
+GameSetup buildSetup(GameStructure structure,
+                     std::vector<std::unique_ptr<IMoveProvider>> providers,
+                     std::uint32_t seed,
+                     bool endWithForeheadAndHidden = false,
+                     bool all1GamesAreForehead = false);
+
 std::vector<int> finalScores(const GameEngine& engine);   // seat-ordered totals
 
 // (bid, tricksWon) per seat, per round.

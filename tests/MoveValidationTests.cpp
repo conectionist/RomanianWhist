@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "GameHarness.h"
 #include "ScriptedMoveProvider.h"
 
 #include <romanian_whist/GameEngine.h>
@@ -8,6 +9,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 using namespace romanian_whist;
 using namespace romanian_whist::test;
@@ -31,18 +33,17 @@ std::unique_ptr<GameEngine> buildGame(std::vector<ScriptedMoveProvider*>& seats,
                                       unsigned int playerCount = 4,
                                       GameStructure structure = GameStructure::S_818)
 {
-    auto engine = std::make_unique<GameEngine>(7u);
+    std::vector<std::unique_ptr<IMoveProvider>> providers;
 
     for(unsigned int i = 0 ; i < playerCount ; i++)
     {
         auto provider = std::make_unique<ScriptedMoveProvider>();
         seats.push_back(provider.get());
-        engine->addPlayer("P" + std::to_string(i), std::move(provider));
+        providers.push_back(std::move(provider));
     }
 
-    engine->initializeScoreboard(structure, false, false);
-    engine->initializeDeck(playerCount);
-    engine->setStatus(GameStatus::InProgress);
+    auto engine = std::make_unique<GameEngine>();
+    engine->start(test::buildSetup(structure, std::move(providers), 7u));
 
     return engine;
 }

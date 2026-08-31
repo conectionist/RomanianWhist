@@ -36,9 +36,6 @@ public:
     
     void calculateScores(PlayerList& players);
     void commitRoundScores(PlayerList& players);
-    
-    // Data access methods for display purposes
-    std::vector<std::pair<std::string, int>> getPlayerScores(const PlayerList& players) const;
 
 private:
     void addRound(Round&& round);

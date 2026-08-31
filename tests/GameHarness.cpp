@@ -9,35 +9,45 @@ std::unique_ptr<GameEngine> playFullGame(GameStructure structure,
                                          bool endWithForeheadAndHidden,
                                          bool all1GamesAreForehead)
 {
-    auto enginePtr = std::make_unique<GameEngine>(seed);
+    auto enginePtr = std::make_unique<GameEngine>();
     GameEngine& game = *enginePtr;
 
-    const std::size_t playerCount = providers.size();
-
-    for(std::size_t i = 0 ; i < playerCount ; i++)
-        game.addPlayer("P" + std::to_string(i), std::move(providers[i]));
-
-    game.initializeScoreboard(structure, endWithForeheadAndHidden, all1GamesAreForehead);
-    game.initializeDeck(static_cast<unsigned int>(playerCount));
-
-    // Registered before the game starts, because setStatus() is what fires
-    // onGameStarted().
+    // Registered before start(), because start() is what fires onGameStarted().
     for(IGameObserver* observer : observers)
         game.addObserver(observer);
 
-    game.setStatus(GameStatus::InProgress);
+    game.start(buildSetup(structure, std::move(providers), seed,
+                          endWithForeheadAndHidden, all1GamesAreForehead));
     game.run();
 
     return enginePtr;
 }
 
+GameSetup buildSetup(GameStructure structure,
+                     std::vector<std::unique_ptr<IMoveProvider>> providers,
+                     std::uint32_t seed,
+                     bool endWithForeheadAndHidden,
+                     bool all1GamesAreForehead)
+{
+    GameSetup setup;
+
+    setup.structure = structure;
+    setup.endWithForeheadAndHidden = endWithForeheadAndHidden;
+    setup.all1GamesAreForehead = all1GamesAreForehead;
+    setup.shuffleSeed = seed;
+
+    for(std::size_t i = 0 ; i < providers.size() ; i++)
+        setup.seats.push_back(SeatSetup{ "P" + std::to_string(i), std::move(providers[i]) });
+
+    return setup;
+}
+
 std::vector<int> finalScores(const GameEngine& engine)
 {
     std::vector<int> scores;
-    const auto& players = engine.getPlayers();
 
-    for(unsigned int i = 0 ; i < players.size() ; i++)
-        scores.push_back(players.at(i).getTotalScore());
+    for(unsigned int i = 0 ; i < engine.getPlayerCount() ; i++)
+        scores.push_back(engine.getTotalScore(Seat{i}));
 
     return scores;
 }

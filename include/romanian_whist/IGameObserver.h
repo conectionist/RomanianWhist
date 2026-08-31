@@ -88,9 +88,9 @@ public:
 
     // Scored, not yet committed. This - not onRoundComplete - is the round-end
     // render hook: it is the last callback at which getCurrentRoundIndex() still
-    // names the round being reported. getPlayerRoundScores() gives each seat
-    // what this round was worth alongside the total it is about to fold into,
-    // and getPlayerScores() the committed totals it has not folded into yet.
+    // names the round being reported. getRoundScore(seat) is what this round
+    // was worth and getTotalScore(seat) the committed total it has not been
+    // folded into yet; a client wanting the projected total adds the two.
     virtual void onRoundScored(const GameEngine&) {}
 
     // Committed, and the index has already advanced - so getCurrentRoundIndex()

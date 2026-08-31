@@ -16,16 +16,15 @@ class PlayerList
 private:
     // A deque, not a list or a vector. Seat is the public way to name a player,
     // so nothing outside needs a list's O(n) walk to reach one - but at() and
-    // operator[] still hand out Player& (and GameEngine::getPlayer() passes one
-    // straight through), and a vector's reallocation on the next addPlayer()
-    // would leave every such reference dangling. A deque indexes in O(1) like a
-    // vector and keeps references and pointers to the players already in it
-    // valid across addPlayer(), like a list.
+    // operator[] still hand out Player&, and a vector's reallocation on the next
+    // addPlayer() would leave every such reference dangling. A deque indexes in
+    // O(1) like a vector and keeps references and pointers to the players
+    // already in it valid across addPlayer(), like a list.
     //
     // Its iterators are the one thing addPlayer() still invalidates. Nothing
     // holds one across a call: begin()/end() exist for immediate traversal of
-    // the whole table, and by the time a game is under way addPlayer() throws
-    // anyway (the deck and the round schedule are sized to the player count).
+    // the whole table, and the seats are all added in one go by
+    // GameEngine::start(), which is the only caller and never adds another.
     std::deque<Player> players;
 
 public:

@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "GameHarness.h"
 #include "ScriptedMoveProvider.h"
 
 #include <romanian_whist/GameEngine.h>
@@ -9,6 +10,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 using namespace romanian_whist;
 using namespace romanian_whist::test;
@@ -69,27 +71,28 @@ struct Tally : IGameObserver
 
 // A 4-player S_818 game, so the very first round has eight tricks and there is
 // room to stop partway through one.
-std::unique_ptr<GameEngine> buildGame(GameStructure structure = GameStructure::S_818)
+//
+// The setup rather than a started engine: start() is what fires onGameStarted(),
+// so a test that wants to observe the start - or to requestStop() before the
+// first deal - has to get its observers on in between.
+GameSetup scriptedSetup(GameStructure structure = GameStructure::S_818)
 {
-    auto engine = std::make_unique<GameEngine>(7u);
+    std::vector<std::unique_ptr<IMoveProvider>> providers;
 
     for(unsigned int i = 0 ; i < 4 ; i++)
-        engine->addPlayer("P" + std::to_string(i), std::make_unique<ScriptedMoveProvider>());
+        providers.push_back(std::make_unique<ScriptedMoveProvider>());
 
-    engine->initializeScoreboard(structure, false, false);
-    engine->initializeDeck(4);
-
-    return engine;
+    return test::buildSetup(structure, std::move(providers), 7u);
 }
 }
 
 TEST_CASE("requestStop() before run() stops the game having played nothing", "[cancellation]")
 {
-    const auto engine = buildGame();
+    const auto engine = std::make_unique<GameEngine>();
     Tally tally;
     engine->addObserver(&tally);
 
-    engine->setStatus(GameStatus::InProgress);
+    engine->start(scriptedSetup());
     engine->requestStop();
     engine->run();
 
@@ -106,13 +109,13 @@ TEST_CASE("requestStop() before run() stops the game having played nothing", "[c
 
 TEST_CASE("requestStop() mid-round lets the trick finish and stops before the next", "[cancellation]")
 {
-    const auto engine = buildGame();
+    const auto engine = std::make_unique<GameEngine>();
     Tally tally;
     tally.stopAfterTrick = engine.get();
     tally.stopAfterTrickNumber = 3;
 
     engine->addObserver(&tally);
-    engine->setStatus(GameStatus::InProgress);
+    engine->start(scriptedSetup());
     engine->run();
 
     REQUIRE(engine->getStatus() == GameStatus::Stopped);
@@ -139,11 +142,11 @@ TEST_CASE("requestStop() mid-round lets the trick finish and stops before the ne
 
 TEST_CASE("A stopped game cannot be run again", "[cancellation]")
 {
-    const auto engine = buildGame();
+    const auto engine = std::make_unique<GameEngine>();
     Tally tally;
     engine->addObserver(&tally);
 
-    engine->setStatus(GameStatus::InProgress);
+    engine->start(scriptedSetup());
     engine->requestStop();
     engine->run();
 
@@ -160,7 +163,7 @@ TEST_CASE("A stopped game cannot be run again", "[cancellation]")
 
 TEST_CASE("run() and playRound() need a game that has been started", "[cancellation]")
 {
-    const auto engine = buildGame();
+    const auto engine = std::make_unique<GameEngine>();
 
     // Never started: the whole hazard is a run() that silently returns having
     // played nothing, which is exactly what a client that forgets to start the
@@ -168,18 +171,18 @@ TEST_CASE("run() and playRound() need a game that has been started", "[cancellat
     REQUIRE_THROWS_AS(engine->run(), std::logic_error);
     REQUIRE_THROWS_AS(engine->playRound(), std::logic_error);
 
-    engine->setStatus(GameStatus::InProgress);
+    engine->start(scriptedSetup());
     REQUIRE_NOTHROW(engine->playRound());
 }
 
 TEST_CASE("A finished game cannot be run again", "[cancellation]")
 {
     // S_181 with 4 players is 24 rounds; play it out and then ask for more.
-    const auto engine = buildGame(GameStructure::S_181);
+    const auto engine = std::make_unique<GameEngine>();
     Tally tally;
     engine->addObserver(&tally);
 
-    engine->setStatus(GameStatus::InProgress);
+    engine->start(scriptedSetup(GameStructure::S_181));
     engine->run();
 
     REQUIRE(engine->getStatus() == GameStatus::Finished);
@@ -196,13 +199,13 @@ TEST_CASE("A stop during a round's final trick leaves that round unscored", "[ca
 {
     // The first S_818 round is eight tricks, so trick 8 is the last one - the
     // trick with no boundary after it.
-    const auto engine = buildGame();
+    const auto engine = std::make_unique<GameEngine>();
     Tally tally;
     tally.stopAfterTrick = engine.get();
     tally.stopAfterTrickNumber = 8;
 
     engine->addObserver(&tally);
-    engine->setStatus(GameStatus::InProgress);
+    engine->start(scriptedSetup());
     engine->run();
 
     REQUIRE(engine->getStatus() == GameStatus::Stopped);
@@ -221,13 +224,13 @@ TEST_CASE("A stop during a round's final trick leaves that round unscored", "[ca
 
 TEST_CASE("A stop on the last trick of the last round stops rather than finishes", "[cancellation]")
 {
-    const auto engine = buildGame(GameStructure::S_181);
+    const auto engine = std::make_unique<GameEngine>();
     Tally tally;
     tally.stopAfterTrick = engine.get();
     tally.stopOnFinalTrickOfGame = true;
 
     engine->addObserver(&tally);
-    engine->setStatus(GameStatus::InProgress);
+    engine->start(scriptedSetup(GameStructure::S_181));
     engine->run();
 
     // The stop wins. run()'s own boundary check cannot help here - the schedule
@@ -313,11 +316,11 @@ TEST_CASE("A stop requested after the last round has been scored is a no-op", "[
         expectedStatusAtStop = GameStatus::Finished;
     }
 
-    const auto engine = buildGame(GameStructure::S_181);
+    const auto engine = std::make_unique<GameEngine>();
     stopper.engine = engine.get();
 
     engine->addObserver(&stopper);
-    engine->setStatus(GameStatus::InProgress);
+    engine->start(scriptedSetup(GameStructure::S_181));
     engine->run();
 
     // Finished wins, and run() does not turn round and report a stop it can no
@@ -338,19 +341,19 @@ TEST_CASE("A stop requested after the last round has been scored is a no-op", "[
 
     // Terminal is terminal: the raised flag does not let the game be restarted
     // and then stopped, which would fire onGameStopped() after onGameOver().
-    REQUIRE_THROWS_AS(engine->setStatus(GameStatus::InProgress), std::logic_error);
+    REQUIRE_THROWS_AS(engine->start(scriptedSetup(GameStructure::S_181)), std::logic_error);
     REQUIRE(stopper.gameStopped == 0);
 }
 
-TEST_CASE("A terminal game cannot be restarted through setStatus", "[cancellation]")
+TEST_CASE("A terminal game cannot be restarted through start()", "[cancellation]")
 {
     SECTION("a stopped one")
     {
-        const auto engine = buildGame();
+        const auto engine = std::make_unique<GameEngine>();
         Tally tally;
         engine->addObserver(&tally);
 
-        engine->setStatus(GameStatus::InProgress);
+        engine->start(scriptedSetup());
         engine->requestStop();
         engine->run();
 
@@ -359,7 +362,7 @@ TEST_CASE("A terminal game cannot be restarted through setStatus", "[cancellatio
         // This used to be allowed, and the stop flag is never cleared - so the
         // restarted engine stopped again at once and fired onGameStopped() a
         // second time, against its "Fires once" contract.
-        REQUIRE_THROWS_AS(engine->setStatus(GameStatus::InProgress), std::logic_error);
+        REQUIRE_THROWS_AS(engine->start(scriptedSetup()), std::logic_error);
 
         REQUIRE(engine->getStatus() == GameStatus::Stopped);
         REQUIRE(tally.gameStopped == 1);
@@ -367,11 +370,11 @@ TEST_CASE("A terminal game cannot be restarted through setStatus", "[cancellatio
 
     SECTION("a finished one")
     {
-        const auto engine = buildGame(GameStructure::S_181);
+        const auto engine = std::make_unique<GameEngine>();
         Tally tally;
         engine->addObserver(&tally);
 
-        engine->setStatus(GameStatus::InProgress);
+        engine->start(scriptedSetup(GameStructure::S_181));
         engine->run();
 
         REQUIRE(engine->getStatus() == GameStatus::Finished);
@@ -380,7 +383,7 @@ TEST_CASE("A terminal game cannot be restarted through setStatus", "[cancellatio
         // schedule still parked at its last round: run() re-dealt that round,
         // overwrote its bets, and threw from inside Round::addTrick - two calls
         // away from the mistake.
-        REQUIRE_THROWS_AS(engine->setStatus(GameStatus::InProgress), std::logic_error);
+        REQUIRE_THROWS_AS(engine->start(scriptedSetup(GameStructure::S_181)), std::logic_error);
 
         REQUIRE(engine->getStatus() == GameStatus::Finished);
         REQUIRE(tally.gameOver == 1);
@@ -395,11 +398,11 @@ TEST_CASE("playRound() reads the stop flag before it deals", "[cancellation]")
     // run()'s loop, which left a client driving rounds itself dealing one more
     // round after requestStop() - and, with a human provider, asking every
     // player to bid on a hand thrown away a moment later.
-    const auto engine = buildGame();
+    const auto engine = std::make_unique<GameEngine>();
     Tally tally;
     engine->addObserver(&tally);
 
-    engine->setStatus(GameStatus::InProgress);
+    engine->start(scriptedSetup());
     engine->requestStop();
     engine->playRound();
 
@@ -464,11 +467,11 @@ TEST_CASE("The trick number moves with the round index", "[cancellation]")
         watcher.stopOnFirstRoundScored = true;
     }
 
-    const auto engine = buildGame();
+    const auto engine = std::make_unique<GameEngine>();
     watcher.engine = engine.get();
 
     engine->addObserver(&watcher);
-    engine->setStatus(GameStatus::InProgress);
+    engine->start(scriptedSetup());
     engine->run();
 
     // The first round's eight tricks are all played; the index then moves to
@@ -563,11 +566,11 @@ TEST_CASE("A stop raised during bidding is honoured before the next seat bids",
         expectedBetsRequested = 4;
     }
 
-    const auto engine = buildGame();
+    const auto engine = std::make_unique<GameEngine>();
     bidder.engine = engine.get();
 
     engine->addObserver(&bidder);
-    engine->setStatus(GameStatus::InProgress);
+    engine->start(scriptedSetup());
     engine->run();
 
     REQUIRE(engine->getStatus() == GameStatus::Stopped);

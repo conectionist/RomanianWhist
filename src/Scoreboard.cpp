@@ -209,20 +209,4 @@ bool Scoreboard::shouldCountForStreaks(const Round& round) const
     return round.getTrickCount() != 1;
 }
 
-std::vector<std::pair<std::string, int>> Scoreboard::getPlayerScores(const PlayerList& players) const
-{
-    std::vector<std::pair<std::string, int>> playerScores;
-    
-    for(const auto& player : players)
-    {
-        playerScores.emplace_back(player.getName(), player.getTotalScore());
-    }
-    
-    // Sort by total score (descending)
-    std::sort(playerScores.begin(), playerScores.end(), 
-              [](const auto& a, const auto& b) { return a.second > b.second; });
-    
-    return playerScores;
-}
-
 } // namespace romanian_whist

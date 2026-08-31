@@ -5,8 +5,15 @@
 #include <romanian_whist/Scoreboard.h>
 #include <romanian_whist/Deck.h>
 
+// SeatSetup holds a unique_ptr<IMoveProvider> by value, so the type has to be
+// complete here. It arrives transitively through PlayerList.h -> Player.h
+// anyway; named directly so a future reshuffle of those headers cannot quietly
+// take it away.
+#include <romanian_whist/IMoveProvider.h>
+
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <random>
 #include <string>
@@ -54,6 +61,49 @@ enum class GamePhase
 // observers, and IGameObserver.h names GameEngine in return.
 class IGameObserver;
 
+// One seat at the table, in seat order. The engine takes ownership of the move
+// provider, which is why this - and GameSetup with it - is move-only.
+struct SeatSetup
+{
+    std::string name;
+    std::unique_ptr<IMoveProvider> moveProvider;
+};
+
+// Everything start() needs, validated as a whole before any of it is applied.
+struct GameSetup
+{
+    // 2..6 seats, each with a non-empty name, and no two names equal byte for
+    // byte. Names are compared exactly: no case folding (these are Romanian
+    // names, and a byte-wise tolower over UTF-8 either does nothing to a
+    // multibyte sequence or corrupts it) and no trimming (validate, do not
+    // mutate - a caller that passes "John " and reads back "John" has been
+    // surprised for nothing). A client is free to be stricter.
+    std::vector<SeatSetup> seats;
+
+    GameStructure structure = GameStructure::S_181;
+    bool endWithForeheadAndHidden = true;
+    bool all1GamesAreForehead = false;
+
+    // Set for a reproducible deal. Unset seeds from std::random_device.
+    //
+    // This is the only thing the seed reaches: a move provider is free to use
+    // its own randomness (RandomCardStrategy's default constructor, for
+    // instance, still draws from std::random_device), so a fully reproducible
+    // game additionally requires seeding every such provider.
+    std::optional<std::uint32_t> shuffleSeed;
+};
+
+// A seat's place in the final standings. Carries the seat, so two players who
+// share a name stay distinguishable - the engine rejects duplicate names, but a
+// client that renders a shortened or decorated name can still produce two equal
+// strings, and it needs to know which row is which.
+struct Standing
+{
+    Seat seat;
+    std::string name;
+    int score;
+};
+
 class GameEngine
 {
 private:
@@ -61,16 +111,9 @@ private:
     Scoreboard scoreboard;
     Deck deck;
     GameStatus status;
+
+    // Seeded by start(), from GameSetup::shuffleSeed or std::random_device.
     std::mt19937 generator;
-
-    // True once initializeDeck() has built the deck. addPlayer(),
-    // initializeDeck() and dealCards() all consult this - see their
-    // declarations below.
-    bool deckInitialized = false;
-
-    // True once initializeScoreboard() has laid out the round schedule.
-    // addPlayer(), initializeScoreboard() and dealCards() all consult this.
-    bool scoreboardInitialized = false;
 
     // Non-owning. Registration order is dispatch order.
     std::vector<IGameObserver*> observers;
@@ -140,57 +183,28 @@ private:
 public:
     GameEngine();
 
-    // Seeds the shuffle generator directly, for a reproducible deal. This
-    // is the only thing the seed reaches: a move provider added afterwards
-    // is still free to use its own randomness (RandomCardStrategy's default
-    // constructor, for instance, still draws from std::random_device), so a
-    // fully reproducible game additionally requires seeding every such
-    // provider.
-    explicit GameEngine(std::uint32_t seed);
-
-    // Throws std::logic_error once initializeDeck() or
-    // initializeScoreboard() has been called - both size their output to
-    // the player count at the moment they run, so a seat added afterwards
-    // leaves the deck sized for the wrong player count (see
-    // initializeDeck()) and the round schedule laid out for the wrong one
-    // (see initializeScoreboard()).
-    void addPlayer(const std::string& name, std::unique_ptr<IMoveProvider> moveProvider);
-
-    // Lays out the round schedule for the players added so far: its length
-    // and the opener rotation both depend on the current player count, so
-    // every seat must be in place first. Callable only once - Scoreboard
-    // appends its rounds without clearing, so a second call would leave the
-    // schedule twice as long with the opener rotation restarting halfway
-    // through. A second call throws std::logic_error.
-    void initializeScoreboard(const GameStructure& structure,
-                              bool endWithForeheadAndHidden,
-                              bool all1GamesAreForehead);
-
-    // Builds the deck for playerCount players (2..6), which must match the
-    // number of players already added. Callable only once: a second call is
-    // rejected with std::logic_error rather than rebuilt, since a rebuild
-    // after dealCards() has already handed out Card* into the old deck
-    // would dangle every hand, the round's trump and any recorded tricks.
-    void initializeDeck(unsigned int playerCount);
-
-    // Setting InProgress for the first time is what starts the game, and is
-    // what fires onGameStarted() - so register every observer before calling
-    // it. Phase 3 of ENGINE_V4_PLAN.md folds this into start(); until then it
-    // is the client's job to remember.
+    // Seats the table, lays out the round schedule, builds the deck and starts
+    // the game - every setup step, in the one order that works, so no client
+    // has to remember it.
     //
-    // Starting throws std::logic_error unless isSetUp(), because
-    // onGameStarted() promises its observers a set-up engine: every
-    // round-scoped accessor already answers there (see IGameObserver.h), and
-    // on an engine with no round schedule every one of them throws instead.
-    // The guard also freezes the table at the moment the game starts, since
-    // addPlayer() is rejected from initializeScoreboard() onwards.
+    // GameSetup owns the move providers and is move-only, so every call site
+    // reads start(std::move(setup)).
     //
-    // Starting is the only thing this method does: Finished and Stopped are
-    // rejected with std::logic_error, because ending a game is the engine's
-    // call and carries a callback with it - onGameOver() with the last round,
-    // onGameStopped() at the trick boundary requestStop() lands on. Call
-    // requestStop() to stop a game.
-    void setStatus(GameStatus _status);
+    // Throws std::invalid_argument if the setup is not playable: fewer than 2 or
+    // more than 6 seats, an empty name, or two names equal byte for byte (see
+    // GameSetup::seats). Throws std::logic_error if the game has already been
+    // started - a second start() would deal over a game in progress, and on a
+    // finished one it would replay a schedule whose scores are already counted.
+    //
+    // The whole setup is validated before any of it is applied, so a rejected
+    // start() leaves the engine untouched and still NotStarted: a client that
+    // catches the error can fix the setup and call start() again.
+    //
+    // Firing onGameStarted() is the last thing it does, so register every
+    // observer first. The engine is set up but not yet dealt at that point -
+    // see IGameObserver.h for exactly what is readable there.
+    void start(GameSetup setup);
+
     GameStatus getStatus() const;
     bool isInProgress() const;
 
@@ -198,18 +212,22 @@ public:
     // setup.
     //
     // It does NOT answer whether the round-scoped accessors are safe to call:
-    // those are keyed on the schedule existing, and the phase is still
-    // NotStarted right through onGameStarted(), where every one of them already
-    // answers. isSetUp() is that question.
+    // the phase is still NotStarted right through onGameStarted(), where every
+    // one of them already answers. isSetUp() is that question.
     GamePhase getPhase() const;
 
     // Whether the game has been set up far enough for the round-scoped
-    // accessors to answer - true once initializeScoreboard() has laid out the
-    // schedule, which is the precondition requireStarted() actually enforces.
+    // accessors to answer - true once start() has laid out the schedule.
     //
     // This, getStatus(), getPhase(), isInProgress() and getPlayerCount() are
     // callable at any time; everything round-scoped throws std::logic_error
-    // until this is true. From Phase 3, start() is what makes it true.
+    // until this is true.
+    //
+    // It is the same question as getStatus() != NotStarted, now that start()
+    // does both at once. It stays as a method of its own because it is the one
+    // that says what a client actually wants to know, and because the guard it
+    // describes is a precondition on reading state rather than a fact about the
+    // game's progress - a stopped or finished game is still readable.
     bool isSetUp() const;
 
     // Non-owning. Observers must outlive the engine. Registering the same
@@ -315,9 +333,25 @@ public:
 
     unsigned int getCurrentRoundTrickCount() const;
 
-    // Data access methods for display purposes
-    std::vector<std::pair<std::string, int>> getPlayerScores() const;
-    std::vector<std::pair<std::string, std::pair<int, int>>> getPlayerRoundScores() const;
+    // ---- scores ----
+    // The final (or running) standings, best first. Sorted stably, so seats on
+    // equal scores stay in seat order rather than in whatever order the sort
+    // happened to leave them - a tie that rendered differently between two runs
+    // of the same game would be a bug no test could reproduce.
+    std::vector<Standing> getStandings() const;
+
+    // getRoundScore() is what the current round is worth so far.
+    // getTotalScore() is the *committed* total and does not include it until
+    // the round is complete: scoring a round writes getRoundScore(), and
+    // committing it is what folds that into getTotalScore() and clears it.
+    //
+    // So inside onRoundScored() the two are "what this round was worth" and
+    // "the total it has not yet been added to", and a client wanting the
+    // projected total adds them. By onRoundComplete() the round score is 0 and
+    // the total includes it. Render one without the other and the scoreboard
+    // reads differently either side of the commit.
+    int getRoundScore(Seat seat) const;
+    int getTotalScore(Seat seat) const;
 
     // Live game state, for clients that render more than a score table. Through
     // these a UI can read each seat's hand, streaks and scores, and the current
@@ -367,18 +401,33 @@ public:
     unsigned int getTricksWon(Seat seat) const;
 
 private:
+    // ---- setup, once start() has validated it ----
+    // These were four public methods a client called in an order that was
+    // load-bearing and only partly enforced, each guard throwing about itself
+    // rather than about starting a game. start() is that order now, and it is
+    // the only caller, so the guards they carried are gone with the ways of
+    // reaching them out of sequence.
+    void addPlayer(const std::string& name, std::unique_ptr<IMoveProvider> moveProvider);
+
+    // Lays out the round schedule. Its length and the opener rotation both
+    // depend on the player count, so every seat must be in place first.
+    void initializeScoreboard(const GameStructure& structure,
+                              bool endWithForeheadAndHidden,
+                              bool all1GamesAreForehead);
+
+    // Builds the deck for the seats already added; it reads its own player
+    // count rather than being told one that has to match.
+    void initializeDeck();
+
     // ---- the loop's own primitives ----
-    // These were the public API a client used to drive the game with, in an
-    // order that was load-bearing and unenforced. playRound() is that order
-    // now, so they are its business alone: a client outside the engine has no
-    // way to call them out of sequence, and no reason to call them at all.
+    // Likewise the public API a client used to drive the game with. playRound()
+    // is that order now, so they are its business alone.
     void shuffleDeck();
 
-    // Deals the current round's hands (and its trump card, below 8 tricks)
-    // out of the deck. Requires both initializeDeck() and
-    // initializeScoreboard() to have run - the deck supplies the cards and
-    // the scoreboard the trick count - and throws std::logic_error
-    // otherwise, rather than indexing an empty deck or an empty schedule.
+    // Deals the current round's hands (and its trump card, below 8 tricks) out
+    // of the deck. Needs both the deck (the cards) and the schedule (the trick
+    // count), which start() builds together - so requireStarted() is the whole
+    // precondition, where this used to carry one guard for each.
     void dealCards();
 
     void placeBet(Seat seat, unsigned int bet);
@@ -399,10 +448,9 @@ private:
     // of arbitrary memory, not a thrown error. One guard rather than a check per
     // accessor, so a future accessor cannot be added without one.
     //
-    // Keyed on the scoreboard rather than on the status because that is the
-    // actual precondition: a game whose status has been set but whose schedule
-    // has not been built is exactly as unsafe. From Phase 3, start() does both
-    // at once and the two conditions become the same thing.
+    // Keyed on the status, which start() sets in the same breath as it lays the
+    // schedule out - the two conditions became the same thing once setup stopped
+    // being something a client could do half of.
     void requireStarted() const;
 
     // run() and playRound() need a live game. Also what stops a second run() on
