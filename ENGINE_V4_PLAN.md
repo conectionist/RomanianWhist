@@ -1269,6 +1269,14 @@ Three fixes on top of the above, all with the golden scores still unmoved:
 
 ### Phase 2 — The engine owns the loop [DONE]
 
+**Status: done.** Merged to `master` as
+[`a7c4834`](https://github.com/conectionist/romanian_whist_engine/commit/a7c4834) (squashed from
+eleven commits on `engine-v4`: two implementing the phase, nine from six rounds of review).
+`ctest` green on both presets — 72 tests, up from 57 at submission — `-Wall -Wextra` clean, clean
+under ASan and UBSan over 1.59M assertions, golden scores byte-identical throughout, and the
+terminal client renders a byte-identical 15,668-line game. What the review rounds found is
+recorded at the end of this section.
+
 The core of the refactor.
 
 1. Add `IGameObserver.h`, `GamePhase`, observer registration, `GameStatus::Stopped` and
