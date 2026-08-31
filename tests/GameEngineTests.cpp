@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "GameHarness.h"
 #include "ScriptedMoveProvider.h"
 
 #include <romanian_whist/AiMoveProvider.h>
@@ -9,8 +10,10 @@
 #include <romanian_whist/strategies/FirstCardStrategy.h>
 
 #include <memory>
+#include <algorithm>
 #include <numeric>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 using namespace romanian_whist;
@@ -23,10 +26,40 @@ std::unique_ptr<IMoveProvider> dummyProvider()
     return std::make_unique<AiMoveProvider>(std::make_unique<FirstCardStrategy>());
 }
 
-void addPlayers(GameEngine& engine, unsigned int count)
+// A playable setup of `count` seats, named P0..Pn. Seat count is the only thing
+// most of these cases vary, so everything else stays at the harness defaults.
+GameSetup setupFor(unsigned int count, GameStructure structure = GameStructure::S_181)
 {
+    std::vector<std::unique_ptr<IMoveProvider>> providers;
+
     for(unsigned int i = 0 ; i < count ; i++)
-        engine.addPlayer("P" + std::to_string(i), dummyProvider());
+        providers.push_back(dummyProvider());
+
+    return test::buildSetup(structure, std::move(providers), 1u);
+}
+
+// A setup with these exact names, for the cases that are about name validation.
+// Seat count comes from the list, so it can also express an unplayable table.
+GameSetup setupWithNames(std::vector<std::string> names)
+{
+    GameSetup setup;
+    setup.shuffleSeed = 1u;
+
+    for(std::string& name : names)
+        setup.seats.push_back(SeatSetup{ std::move(name), dummyProvider() });
+
+    return setup;
+}
+
+// A started game of `count` seats, for the cases that only want something to
+// read accessors off.
+std::unique_ptr<GameEngine> startedGame(unsigned int count,
+                                        GameStructure structure = GameStructure::S_181)
+{
+    auto engine = std::make_unique<GameEngine>();
+    engine->start(setupFor(count, structure));
+
+    return engine;
 }
 
 // The bidding rules used to be testable by hand: place a bet, ask what is
@@ -39,18 +72,17 @@ std::unique_ptr<GameEngine> buildScriptedGame(std::vector<ScriptedMoveProvider*>
                                               unsigned int playerCount,
                                               GameStructure structure = GameStructure::S_181)
 {
-    auto engine = std::make_unique<GameEngine>(1u);
+    std::vector<std::unique_ptr<IMoveProvider>> providers;
 
     for(unsigned int i = 0 ; i < playerCount ; i++)
     {
         auto provider = std::make_unique<ScriptedMoveProvider>();
         seats.push_back(provider.get());
-        engine->addPlayer("P" + std::to_string(i), std::move(provider));
+        providers.push_back(std::move(provider));
     }
 
-    engine->initializeScoreboard(structure, false, false);
-    engine->initializeDeck(playerCount);
-    engine->setStatus(GameStatus::InProgress);
+    auto engine = std::make_unique<GameEngine>();
+    engine->start(test::buildSetup(structure, std::move(providers), 1u));
 
     return engine;
 }
@@ -174,11 +206,10 @@ TEST_CASE("GameEngine::getForbiddenBet is empty once the bids already exceed the
 
 TEST_CASE("Round-scoped accessors throw before the game is set up", "[game-engine]")
 {
-    GameEngine engine(1u);
-    addPlayers(engine, 3);
+    GameEngine engine;
 
     // Scoreboard::getCurrentRound() is rounds[currentRound] on a vector that is
-    // empty until initializeScoreboard() runs, so every one of these would
+    // empty until start() lays the schedule out, so every one of these would
     // otherwise read arbitrary memory rather than complain. A client with a
     // setup screen - a Qt window drawing a scoreboard widget before the wizard
     // finishes, a backend serving a game that was created but never started -
@@ -205,12 +236,13 @@ TEST_CASE("Round-scoped accessors throw before the game is set up", "[game-engin
     REQUIRE(engine.getPhase() == GamePhase::NotStarted);
     REQUIRE(engine.getStatus() == GameStatus::NotStarted);
     REQUIRE_FALSE(engine.isInProgress());
-    REQUIRE(engine.getPlayerCount() == 3);
+    REQUIRE(engine.getPlayerCount() == 0);
     REQUIRE_FALSE(engine.getActiveSeat().has_value());
 
-    engine.initializeScoreboard(GameStructure::S_181, false, false);
+    engine.start(setupFor(3));
 
     REQUIRE(engine.isSetUp());
+    REQUIRE(engine.getPlayerCount() == 3);
     REQUIRE_NOTHROW(engine.getCurrentRound());
     REQUIRE_NOTHROW(engine.getCurrentTrick());
     REQUIRE(engine.getCurrentTrickNumber() == 0u);
@@ -236,14 +268,11 @@ TEST_CASE("isSetUp(), not the phase, is what says the accessors are safe", "[gam
         }
     };
 
-    GameEngine engine(1u);
-    addPlayers(engine, 3);
-    engine.initializeScoreboard(GameStructure::S_181, false, false);
-    engine.initializeDeck(3);
+    GameEngine engine;
 
     Checker checker;
     engine.addObserver(&checker);
-    engine.setStatus(GameStatus::InProgress);
+    engine.start(setupFor(3));
 
     REQUIRE(checker.checked);
 }
@@ -287,124 +316,114 @@ TEST_CASE("GameEngine::getBiddingOrder counts round from the round leader", "[ga
     REQUIRE_THROWS_AS(engine->getBiddingOrder(Seat{4}), std::out_of_range);
 }
 
-TEST_CASE("GameEngine::addPlayer rejects duplicate names", "[game-engine]")
+TEST_CASE("GameEngine::start rejects impossible seat counts", "[game-engine]")
 {
-    GameEngine engine;
-    engine.addPlayer("A", dummyProvider());
+    // The 2..6 check used to live in initializeDeck() and key off an argument.
+    // It is a property of the setup, so it belongs with the rest of the setup
+    // validation - and now reads the seat count it is actually about.
+    SECTION("1 seat throws")
+    {
+        GameEngine engine;
+        REQUIRE_THROWS_AS(engine.start(setupFor(1)), std::invalid_argument);
+    }
 
-    REQUIRE_THROWS_AS(engine.addPlayer("A", dummyProvider()), std::invalid_argument);
-    REQUIRE(engine.getPlayerCount() == 1);
+    SECTION("7 seats throws")
+    {
+        GameEngine engine;
+        REQUIRE_THROWS_AS(engine.start(setupFor(7)), std::invalid_argument);
+    }
+
+    SECTION("0 seats throws")
+    {
+        GameEngine engine;
+        REQUIRE_THROWS_AS(engine.start(GameSetup{}), std::invalid_argument);
+    }
+
+    SECTION("2 through 6 seats do not throw")
+    {
+        for(unsigned int n = 2 ; n <= 6 ; n++)
+        {
+            GameEngine engine;
+            REQUIRE_NOTHROW(engine.start(setupFor(n)));
+            REQUIRE(engine.getPlayerCount() == n);
+        }
+    }
 }
 
-TEST_CASE("GameEngine::initializeDeck rejects a second call", "[game-engine]")
+TEST_CASE("GameEngine::start rejects unusable seat names", "[game-engine]")
 {
-    // A second call used to be made "safe" by clearing and rebuilding the
-    // deck, but that dangles every Card* already handed out by a deal (the
-    // round's trump, any recorded tricks, every player's hand) - rejecting
-    // it outright is the only thing that is actually safe.
-    GameEngine engine;
-    addPlayers(engine, 4);
-    engine.initializeDeck(4);
+    SECTION("a duplicate name throws")
+    {
+        // Bets and tricks are keyed by Seat, so a shared name no longer
+        // corrupts scoring - it is rejected because two rows a player cannot
+        // tell apart is a bad game, not because it is still a wrong one.
+        GameEngine engine;
+        REQUIRE_THROWS_AS(engine.start(setupWithNames({ "A", "B", "A" })),
+                          std::invalid_argument);
+    }
 
-    REQUIRE_THROWS_AS(engine.initializeDeck(4), std::logic_error);
-    REQUIRE(engine.getDeck().size() == 32);
+    SECTION("an empty name throws")
+    {
+        GameEngine engine;
+        REQUIRE_THROWS_AS(engine.start(setupWithNames({ "A", "", "C" })),
+                          std::invalid_argument);
+    }
+
+    SECTION("names are compared byte for byte, so case tells them apart")
+    {
+        // Deliberately no case folding: these are Romanian names and will carry
+        // S-comma, T-comma, A-breve. A byte-wise tolower over UTF-8 either does
+        // nothing to a multibyte sequence or corrupts it, and correct Unicode
+        // folding is not a dependency the engine should grow. A client that
+        // wants to be stricter is free to be - SetupWizard already is.
+        GameEngine engine;
+        REQUIRE_NOTHROW(engine.start(setupWithNames({ "John", "john" })));
+    }
+
+    SECTION("nothing is trimmed - validate, do not mutate")
+    {
+        GameEngine engine;
+        REQUIRE_NOTHROW(engine.start(setupWithNames({ "John ", "John" })));
+        REQUIRE(engine.getPlayers().at(0).getName() == "John ");
+    }
 }
 
-TEST_CASE("GameEngine::addPlayer rejects a player added after initializeDeck", "[game-engine]")
+TEST_CASE("GameEngine::start rejects a seat with no move provider", "[game-engine]")
 {
-    // initializeDeck()'s playerCount-matches-players.size() guard only
-    // checks at the moment it runs; a seat added afterwards would silently
-    // invalidate it again.
-    GameEngine engine;
-    addPlayers(engine, 4);
-    engine.initializeDeck(4);
+    GameSetup setup;
+    setup.seats.push_back(SeatSetup{ "A", dummyProvider() });
+    setup.seats.push_back(SeatSetup{ "B", nullptr });
 
-    REQUIRE_THROWS_AS(engine.addPlayer("extra", dummyProvider()), std::logic_error);
-    REQUIRE(engine.getPlayerCount() == 4);
+    GameEngine engine;
+    REQUIRE_THROWS_AS(engine.start(std::move(setup)), std::invalid_argument);
 }
 
-TEST_CASE("GameEngine::addPlayer rejects a player added after initializeScoreboard", "[game-engine]")
+TEST_CASE("GameEngine::start rejects a second start", "[game-engine]")
 {
-    // The schedule's length and its opener rotation are both laid out for
-    // the player count at the moment initializeScoreboard() runs; a seat
-    // added afterwards used to pass every check and leave a 4-player game
-    // running a 3-player, 21-round schedule.
+    // One error naming start(), where there used to be four - addPlayer() after
+    // either initializer, initializeDeck() twice and initializeScoreboard()
+    // twice - each complaining about whichever ran first rather than about the
+    // thing the client actually did.
     GameEngine engine;
-    addPlayers(engine, 3);
-    engine.initializeScoreboard(GameStructure::S_181, false, false);
-    const unsigned int roundCount = engine.getRoundCount();
+    engine.start(setupFor(3));
 
-    REQUIRE_THROWS_AS(engine.addPlayer("extra", dummyProvider()), std::logic_error);
-    REQUIRE(engine.getPlayerCount() == 3);
-    REQUIRE(engine.getRoundCount() == roundCount);
-}
-
-TEST_CASE("GameEngine::initializeScoreboard rejects a second call", "[game-engine]")
-{
-    // Scoreboard::initialize() appends without clearing, so a second call
-    // used to double the schedule - 21 rounds became 42, with the opener
-    // rotation restarting halfway through.
-    GameEngine engine;
-    addPlayers(engine, 3);
-    engine.initializeScoreboard(GameStructure::S_181, false, false);
     const unsigned int roundCount = engine.getRoundCount();
     REQUIRE(roundCount == 21);
 
-    REQUIRE_THROWS_AS(engine.initializeScoreboard(GameStructure::S_181, false, false),
-                      std::logic_error);
+    REQUIRE_THROWS_AS(engine.start(setupFor(4)), std::logic_error);
+
+    // And left nothing behind: the schedule is not doubled, the deck is not
+    // rebuilt, and the table is still the one onGameStarted() announced.
     REQUIRE(engine.getRoundCount() == roundCount);
+    REQUIRE(engine.getPlayerCount() == 3);
+    REQUIRE(engine.getDeck().size() == 24);
 }
 
-TEST_CASE("playRound() requires the deck and the scoreboard", "[game-engine]")
+TEST_CASE("A rejected start leaves the engine startable", "[game-engine]")
 {
-    // dealCards() is the engine's own business now, so these guards are reached
-    // through the loop rather than directly - which is the only path a client
-    // can actually take.
-    SECTION("without initializeDeck it throws instead of dealing out of an empty deck")
-    {
-        // Every player would otherwise be handed a Card* into an empty Deck,
-        // with the crash deferred to the first dereference.
-        GameEngine engine;
-        addPlayers(engine, 3);
-        engine.initializeScoreboard(GameStructure::S_181, false, false);
-        engine.setStatus(GameStatus::InProgress);
-
-        REQUIRE_THROWS_AS(engine.playRound(), std::logic_error);
-    }
-
-    SECTION("without initializeScoreboard the game cannot even be started")
-    {
-        // The missing round is caught a step earlier than the missing deck:
-        // setStatus() will not start a game with no schedule, so playRound()'s
-        // own requireStarted() is no longer reachable from here. Both throw
-        // std::logic_error and neither lets a round be played, which is what
-        // this section is actually for.
-        GameEngine engine;
-        addPlayers(engine, 3);
-        engine.initializeDeck(3);
-
-        REQUIRE_THROWS_AS(engine.setStatus(GameStatus::InProgress), std::logic_error);
-        REQUIRE_THROWS_AS(engine.playRound(), std::logic_error);
-    }
-
-    SECTION("with both in place it plays")
-    {
-        GameEngine engine;
-        addPlayers(engine, 3);
-        engine.initializeScoreboard(GameStructure::S_181, false, false);
-        engine.initializeDeck(3);
-        engine.setStatus(GameStatus::InProgress);
-
-        REQUIRE_NOTHROW(engine.playRound());
-    }
-}
-
-TEST_CASE("setStatus refuses to start a game that is not set up", "[game-engine]")
-{
-    // onGameStarted() promises observers an engine they can read - the round
-    // count, the round leader, the trick count all answer there. On an engine
-    // with no schedule every one of those throws instead, out of setStatus()
-    // itself, so the start is what has to be rejected.
+    // start() validates the whole setup before applying any of it, so a client
+    // that catches the error can fix the setup and try again. Nothing is half
+    // applied in between: no seats, no schedule, no deck, and no callback.
     struct StartWatcher : IGameObserver
     {
         unsigned int gameStarted = 0;
@@ -412,79 +431,114 @@ TEST_CASE("setStatus refuses to start a game that is not set up", "[game-engine]
         void onGameStarted(const GameEngine&) override { gameStarted++; }
     };
 
-    SECTION("starting before initializeScoreboard throws and fires nothing")
-    {
-        GameEngine engine;
-        addPlayers(engine, 3);
-        engine.initializeDeck(3);
-
-        StartWatcher watcher;
-        engine.addObserver(&watcher);
-
-        REQUIRE_THROWS_AS(engine.setStatus(GameStatus::InProgress), std::logic_error);
-
-        // The rejected start left nothing behind: no callback, and a status
-        // that can still be moved to InProgress once the schedule exists.
-        REQUIRE(watcher.gameStarted == 0);
-        REQUIRE(engine.getStatus() == GameStatus::NotStarted);
-        REQUIRE_FALSE(engine.isSetUp());
-
-        engine.initializeScoreboard(GameStructure::S_181, false, false);
-        REQUIRE_NOTHROW(engine.setStatus(GameStatus::InProgress));
-        REQUIRE(watcher.gameStarted == 1);
-    }
-
-    SECTION("the table is fixed by the time the game starts")
-    {
-        // The guard doubles as the point the seats stop moving: a start now
-        // implies initializeScoreboard(), which is already what closes
-        // addPlayer(). No player can join after onGameStarted() has announced
-        // the table.
-        GameEngine engine;
-        addPlayers(engine, 3);
-        engine.initializeScoreboard(GameStructure::S_181, false, false);
-        engine.initializeDeck(3);
-        engine.setStatus(GameStatus::InProgress);
-
-        REQUIRE_THROWS_AS(engine.addPlayer("late", dummyProvider()), std::logic_error);
-        REQUIRE(engine.getPlayerCount() == 3);
-    }
-}
-
-TEST_CASE("GameEngine::initializeDeck rejects a playerCount that doesn't match the players added", "[game-engine]")
-{
-    // dealCards() indexes the deck by players.size(), not by initializeDeck's
-    // argument - a mismatch here used to build a deck sized for the wrong
-    // player count and read past the end of it once dealt.
     GameEngine engine;
-    addPlayers(engine, 6);
+    StartWatcher watcher;
+    engine.addObserver(&watcher);
 
-    REQUIRE_THROWS_AS(engine.initializeDeck(4), std::invalid_argument);
+    REQUIRE_THROWS_AS(engine.start(setupWithNames({ "A", "A" })), std::invalid_argument);
+
+    REQUIRE(watcher.gameStarted == 0);
+    REQUIRE(engine.getStatus() == GameStatus::NotStarted);
+    REQUIRE_FALSE(engine.isSetUp());
+    REQUIRE(engine.getPlayerCount() == 0);
+    REQUIRE(engine.getDeck().size() == 0);
+
+    REQUIRE_NOTHROW(engine.start(setupWithNames({ "A", "B" })));
+    REQUIRE(watcher.gameStarted == 1);
+    REQUIRE(engine.getPlayerCount() == 2);
 }
 
-TEST_CASE("GameEngine::initializeDeck rejects impossible player counts", "[game-engine]")
+TEST_CASE("GameEngine::getStandings carries the seat and sorts stably", "[game-engine]")
 {
-    SECTION("1 player throws")
-    {
-        GameEngine engine;
-        REQUIRE_THROWS_AS(engine.initializeDeck(1), std::invalid_argument);
-    }
+    GameEngine engine;
+    engine.start(setupWithNames({ "Ana", "Bogdan", "Cristi", "Dan" }));
 
-    SECTION("7 players throws")
+    SECTION("before a point is scored every seat is level, in seat order")
     {
-        GameEngine engine;
-        REQUIRE_THROWS_AS(engine.initializeDeck(7), std::invalid_argument);
-    }
+        // The tie case is the whole reason this is a stable_sort. With
+        // std::sort four equal scores could come back in any order, and the
+        // same game could render its scoreboard differently between two runs -
+        // a difference no test could reproduce and no reader could explain.
+        const std::vector<Standing> standings = engine.getStandings();
 
-    SECTION("2 through 6 players do not throw")
-    {
-        for(unsigned int n = 2 ; n <= 6 ; n++)
+        REQUIRE(standings.size() == 4);
+
+        for(unsigned int i = 0 ; i < 4 ; i++)
         {
-            GameEngine engine;
-            addPlayers(engine, n);
-            REQUIRE_NOTHROW(engine.initializeDeck(n));
+            REQUIRE(standings[i].seat == Seat{i});
+            REQUIRE(standings[i].score == 0);
         }
+
+        REQUIRE(standings[0].name == "Ana");
+        REQUIRE(standings[3].name == "Dan");
     }
+
+    SECTION("after a game it is sorted best first, and the seat still identifies the row")
+    {
+        engine.run();
+
+        const std::vector<Standing> standings = engine.getStandings();
+        REQUIRE(standings.size() == 4);
+
+        for(std::size_t i = 1 ; i < standings.size() ; i++)
+            REQUIRE(standings[i - 1].score >= standings[i].score);
+
+        // Every seat appears exactly once, and each row's score is that seat's
+        // - so a client can key a highlight off the seat rather than the name.
+        std::vector<unsigned int> seatsSeen;
+        for(const Standing& standing : standings)
+        {
+            REQUIRE(standing.score == engine.getTotalScore(standing.seat));
+            REQUIRE(standing.name == engine.getPlayers().at(standing.seat.index).getName());
+            seatsSeen.push_back(standing.seat.index);
+        }
+
+        std::sort(seatsSeen.begin(), seatsSeen.end());
+        REQUIRE(seatsSeen == std::vector<unsigned int>{ 0, 1, 2, 3 });
+    }
+}
+
+TEST_CASE("getRoundScore is what the round is worth, getTotalScore what is committed", "[game-engine]")
+{
+    // The split Player::addToScore()/resetCurrentRoundScore() makes: scoring a
+    // round writes the round score, and committing folds it into the total and
+    // clears it. A client rendering only one of the two shows a different number
+    // either side of the commit for the same round.
+    struct Checker : IGameObserver
+    {
+        unsigned int roundsChecked = 0;
+        std::vector<int> totalsAtScored;
+
+        void onRoundScored(const GameEngine& engine) override
+        {
+            totalsAtScored.clear();
+
+            for(unsigned int i = 0 ; i < engine.getPlayerCount() ; i++)
+                totalsAtScored.push_back(engine.getTotalScore(Seat{i}) +
+                                         engine.getRoundScore(Seat{i}));
+        }
+
+        void onRoundComplete(const GameEngine& engine) override
+        {
+            // Committed: the round score has been folded in and cleared, so the
+            // total alone now equals the projection made a moment ago.
+            for(unsigned int i = 0 ; i < engine.getPlayerCount() ; i++)
+            {
+                REQUIRE(engine.getRoundScore(Seat{i}) == 0);
+                REQUIRE(engine.getTotalScore(Seat{i}) == totalsAtScored[i]);
+            }
+
+            roundsChecked++;
+        }
+    };
+
+    GameEngine engine;
+    Checker checker;
+    engine.addObserver(&checker);
+    engine.start(setupFor(3));
+    engine.run();
+
+    REQUIRE(checker.roundsChecked == engine.getRoundCount());
 }
 
 TEST_CASE("GameEngine deck composition", "[game-engine]")
@@ -502,8 +556,7 @@ TEST_CASE("GameEngine deck composition", "[game-engine]")
     for(const auto& expectation : expectations)
     {
         GameEngine engine;
-        addPlayers(engine, expectation.playerCount);
-        engine.initializeDeck(expectation.playerCount);
+        engine.start(setupFor(expectation.playerCount));
 
         const Deck& deck = engine.getDeck();
         REQUIRE(deck.size() == expectation.size);

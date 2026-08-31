@@ -10,38 +10,76 @@
 
 namespace romanian_whist
 {
-GameEngine::GameEngine() : status(GameStatus::NotStarted), generator(std::random_device{}())
+GameEngine::GameEngine() : status(GameStatus::NotStarted)
 {}
 
-GameEngine::GameEngine(std::uint32_t seed) : status(GameStatus::NotStarted), generator(seed)
-{}
+void GameEngine::start(GameSetup setup)
+{
+    // Everything below validates before anything is applied, so a rejected
+    // start() leaves the engine exactly as it was: still NotStarted, with no
+    // seats, no schedule and no deck. A client that catches the error can fix
+    // its setup and call start() again.
+
+    // A second start() would deal over a game in progress; on a finished or
+    // stopped one it would replay a schedule whose scores are already counted.
+    // Neither is recoverable, and both used to be three separate guards, each
+    // complaining about whichever of addPlayer()/initializeScoreboard()/
+    // initializeDeck() happened to run first.
+    if(status != GameStatus::NotStarted)
+        throw std::logic_error("GameEngine::start: the game has already been started");
+
+    if(setup.seats.size() < 2 || setup.seats.size() > 6)
+        throw std::invalid_argument("GameEngine::start: a game needs between 2 and 6 seats");
+
+    for(const SeatSetup& seat : setup.seats)
+    {
+        if(seat.name.empty())
+            throw std::invalid_argument("GameEngine::start: a seat's name cannot be empty");
+
+        if(seat.moveProvider == nullptr)
+            throw std::invalid_argument("GameEngine::start: seat '" + seat.name +
+                                        "' has no move provider");
+    }
+
+    // Bets and tricks are keyed by Seat, so a shared name no longer corrupts
+    // scoring. It is still rejected because a name is how a client labels a seat
+    // on screen and how a player identifies their own: two "Ana" rows that
+    // cannot be told apart is a bad game, just no longer a wrong one.
+    //
+    // Compared byte for byte - see GameSetup::seats for why there is no case
+    // folding here. Quadratic over at most six names.
+    for(std::size_t i = 0 ; i < setup.seats.size() ; i++)
+        for(std::size_t j = i + 1 ; j < setup.seats.size() ; j++)
+        {
+            if(setup.seats[i].name == setup.seats[j].name)
+                throw std::invalid_argument("GameEngine::start: duplicate seat name: " +
+                                            setup.seats[i].name);
+        }
+
+    generator.seed(setup.shuffleSeed.value_or(std::random_device{}()));
+
+    for(SeatSetup& seat : setup.seats)
+        addPlayer(seat.name, std::move(seat.moveProvider));
+
+    // Order matters and is no longer anyone else's to remember: the schedule is
+    // sized and its opener rotation laid out for the seats now in place, and the
+    // deck is built for the same count.
+    initializeScoreboard(setup.structure,
+                         setup.endWithForeheadAndHidden,
+                         setup.all1GamesAreForehead);
+    initializeDeck();
+
+    status = GameStatus::InProgress;
+
+    // Last, and from here rather than from run(): onGameStarted() belongs to the
+    // setup path, so a client that starts the game and then hands the engine to
+    // a worker thread still gets the event where it registered its observers.
+    // run() may also be called more than once, which would duplicate it.
+    notifyGameStarted();
+}
 
 void GameEngine::addPlayer(const std::string &name, std::unique_ptr<IMoveProvider> moveProvider)
 {
-    // Once the deck is built, its size is fixed to the player count at that
-    // moment - a seat added afterwards would leave dealCards() indexing
-    // past the end of it (initializeDeck()'s own guard only checks at the
-    // point it runs, not retroactively).
-    if(deckInitialized)
-        throw std::logic_error("cannot add a player after initializeDeck() has been called");
-
-    // The round schedule is sized and its opener rotation laid out for the
-    // player count at the moment initializeScoreboard() runs. A seat added
-    // afterwards leaves the game playing, say, a 3-player 21-round schedule
-    // with 4 seats, and the rotation no longer returning to the same opener.
-    if(scoreboardInitialized)
-        throw std::logic_error("cannot add a player after initializeScoreboard() has been called");
-
-    // Bets and tricks are keyed by Seat now, so a shared name no longer
-    // corrupts scoring. It is still rejected because a name is how a client
-    // labels a seat on screen and how a player identifies their own: two "Ana"
-    // rows that cannot be told apart is a bad game, just no longer a wrong one.
-    for(const auto& player : players)
-    {
-        if(player.getName() == name)
-            throw std::invalid_argument("duplicate player name: " + name);
-    }
-
     players.addPlayer(name, std::move(moveProvider));
 }
 
@@ -49,103 +87,22 @@ void GameEngine::initializeScoreboard(const GameStructure &structure,
                                       bool endWithForeheadAndHidden, 
                                       bool all1GamesAreForehead)
 {
-    // Scoreboard::initialize() appends its rounds without clearing what is
-    // already there, so a second call would leave a 21-round schedule 42
-    // rounds long, with the opener rotation restarting halfway through.
-    // Reject it outright, as initializeDeck() does.
-    if(scoreboardInitialized)
-        throw std::logic_error("initializeScoreboard() has already been called");
-
     scoreboard.initialize(structure, endWithForeheadAndHidden, all1GamesAreForehead, players);
-
-    scoreboardInitialized = true;
 }
 
-void GameEngine::initializeDeck(unsigned int playerCount)
+void GameEngine::initializeDeck()
 {
-    if(playerCount < 2 || playerCount > 6)
-        throw std::invalid_argument("playerCount must be between 2 and 6");
-
-    // dealCards() indexes the deck by players.size(), not by this argument -
-    // a mismatch here builds a deck sized for the wrong player count and
-    // dealCards() then reads past the end of it.
-    if(playerCount != players.size())
-        throw std::invalid_argument("playerCount must match the number of players added");
-
-    // Deck::addCard only ever appends, and by the time a deal has happened
-    // every dealt Card* points into this exact buffer - rebuilding it would
-    // dangle every one of them rather than just duplicate cards. Reject a
-    // second call outright instead of trying to make it safe.
-    if(deckInitialized)
-        throw std::logic_error("initializeDeck() has already been called");
+    // Its own count, rather than one passed in that had to match: dealCards()
+    // indexes the deck by players.size(), so that was always the number this
+    // wanted and a second copy of it was only ever a way to disagree.
+    const unsigned int playerCount = static_cast<unsigned int>(players.size());
 
     for(int s = 0 ; s < 4 ; s++)
-        for(int r = 1 + (6 - playerCount) * 2 ; r < 13 ; r++)
+        for(int r = 1 + (6 - static_cast<int>(playerCount)) * 2 ; r < 13 ; r++)
         {
             Card card(static_cast<Rank>(r), static_cast<Suit>(s));
             deck.addCard(std::move(card));
         }
-
-    deckInitialized = true;
-}
-
-void GameEngine::setStatus(GameStatus _status)
-{
-    // Finished and Stopped are terminal, and neither game is resumable. Say so
-    // here rather than let the transition through: a client that sets InProgress
-    // on a finished game and calls run() otherwise re-deals the round the
-    // schedule is still parked on, overwrites its bets, and dies inside
-    // Round::addTrick with "round already has all its tricks" - two calls away
-    // from the mistake and phrased as a Round problem. On a stopped game the
-    // stop flag is still raised, so run() would additionally fire
-    // onGameStopped() a second time, against its "Fires once" contract.
-    if(status == GameStatus::Finished || status == GameStatus::Stopped)
-        throw std::logic_error("GameEngine::setStatus: the game has already finished "
-                               "or been stopped, and neither is resumable");
-
-    // Nor can a client put the game into either terminal state itself. Both are
-    // the engine's to declare, and both owe observers a callback at the moment
-    // they happen: completeCurrentRound() ends the game Finished and fires
-    // onGameOver(), honourStopIfRequested() ends it Stopped and fires
-    // onGameStopped(). Letting this method write either would strand every
-    // observer on a game that has silently ended - and the terminal guard above
-    // then makes that unrecoverable. Stopping is what requestStop() is for; it
-    // lands the stop at the next trick boundary with the notification attached.
-    if(_status == GameStatus::Finished || _status == GameStatus::Stopped)
-        throw std::logic_error("GameEngine::setStatus: only the engine ends a game - "
-                               "Finished arrives with the last round, and Stopped is "
-                               "what requestStop() asks for. Setting either here would "
-                               "end the game without telling a single observer");
-
-    // Nor can a game be un-started: the round stays dealt, and the next move
-    // back to InProgress would fire onGameStarted() all over again.
-    if(_status == GameStatus::NotStarted && status != GameStatus::NotStarted)
-        throw std::logic_error("GameEngine::setStatus: a game that has started cannot "
-                               "be returned to NotStarted");
-
-    // Moving off NotStarted for the first time is the start of the game. Phase
-    // 3 gives that transition its own method (start()) and this notification
-    // moves there; until then this is the one place it can honestly happen,
-    // since run() may be called more than once and would either duplicate the
-    // event or misplace it onto the game thread.
-    const bool starting = status == GameStatus::NotStarted && _status == GameStatus::InProgress;
-
-    // onGameStarted() hands observers an engine they are promised they can read
-    // - IGameObserver.h says every round-scoped accessor already answers there.
-    // Without a schedule built, requireStarted() makes liars of all of them and
-    // the first thing an observer asks throws back out of here. Rejecting the
-    // start is the honest answer, and it doubles as the point the table stops
-    // changing: addPlayer() is already closed from initializeScoreboard() on.
-    if(starting && !scoreboardInitialized)
-        throw std::logic_error("GameEngine::setStatus: the game cannot start before "
-                               "initializeScoreboard() has laid out the round "
-                               "schedule - onGameStarted() promises its observers "
-                               "an engine that is already set up");
-
-    status = _status;
-
-    if(starting)
-        notifyGameStarted();
 }
 
 GameStatus GameEngine::getStatus() const
@@ -167,7 +124,7 @@ bool GameEngine::isSetUp() const
 {
     // The same condition requireStarted() guards on, which is what makes this
     // an honest answer rather than a second opinion about it.
-    return scoreboardInitialized;
+    return status != GameStatus::NotStarted;
 }
 
 void GameEngine::addObserver(IGameObserver* observer)
@@ -454,16 +411,10 @@ void GameEngine::shuffleDeck()
 
 void GameEngine::dealCards()
 {
-    // Without a deck there is nothing to hand out: deck[index] would index an
-    // empty Deck and every player would end up holding a Card* into nothing,
-    // with the crash deferred to the first dereference far from here.
-    if(!deckInitialized)
-        throw std::logic_error("dealCards() requires initializeDeck() to have been called");
-
-    // The trick count comes from the current round, and with no schedule
-    // there is no current round to read it from.
-    if(!scoreboardInitialized)
-        throw std::logic_error("dealCards() requires initializeScoreboard() to have been called");
+    // The deck and the schedule this reads are both built by start(), which is
+    // the only way to reach a game that can be dealt at all - so the two guards
+    // that used to stand here have no way left to fire.
+    requireStarted();
 
     clearAllPlayerHands();
 
@@ -675,23 +626,41 @@ void GameEngine::commitRoundScores()
     scoreboard.commitRoundScores(players);
 }
 
-std::vector<std::pair<std::string, int>> GameEngine::getPlayerScores() const
+std::vector<Standing> GameEngine::getStandings() const
 {
-    return scoreboard.getPlayerScores(players);
+    requireStarted();
+
+    std::vector<Standing> standings;
+    standings.reserve(players.size());
+
+    for(unsigned int i = 0 ; i < players.size() ; i++)
+        standings.push_back(Standing{ Seat{i}, players.at(i).getName(), players.at(i).getTotalScore() });
+
+    // Stable, so seats level on points come out in seat order rather than in
+    // whatever order the sort happened to leave them. std::sort would let the
+    // same tie in the same game render differently between two runs, which is a
+    // difference no test could reproduce and no reader could explain.
+    std::stable_sort(standings.begin(), standings.end(),
+                     [](const Standing& left, const Standing& right)
+                     {
+                         return left.score > right.score;
+                     });
+
+    return standings;
 }
 
-std::vector<std::pair<std::string, std::pair<int, int>>> GameEngine::getPlayerRoundScores() const
+int GameEngine::getRoundScore(Seat seat) const
 {
-    std::vector<std::pair<std::string, std::pair<int, int>>> roundScores;
-    
-    for(const auto& player : players)
-    {
-        roundScores.emplace_back(player.getName(),
-                               std::pair<int, int>(player.getCurrentRoundScore(),
-                                             player.getTotalScore() + player.getCurrentRoundScore()));
-    }
-    
-    return roundScores;
+    requireStarted();
+
+    return players.at(seat.index).getCurrentRoundScore();
+}
+
+int GameEngine::getTotalScore(Seat seat) const
+{
+    requireStarted();
+
+    return players.at(seat.index).getTotalScore();
 }
 
 const PlayerList &GameEngine::getPlayers() const
@@ -758,7 +727,7 @@ unsigned int GameEngine::getTricksWon(Seat seat) const
 
 void GameEngine::requireStarted() const
 {
-    if(!scoreboardInitialized)
+    if(status == GameStatus::NotStarted)
         throw std::logic_error("GameEngine: the game has not been set up yet - "
                                "there is no current round to read");
 }

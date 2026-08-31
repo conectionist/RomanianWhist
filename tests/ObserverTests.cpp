@@ -5,6 +5,7 @@
 #include <romanian_whist/IGameObserver.h>
 #include <romanian_whist/strategies/FirstCardStrategy.h>
 
+#include "GameHarness.h"
 #include "ScriptedMoveProvider.h"
 
 #include <algorithm>
@@ -44,25 +45,24 @@ struct CountingObserver : IGameObserver
     }
 };
 
-// By pointer: GameEngine holds an atomic stop flag, so it is neither copyable
-// nor movable and cannot be returned by value.
-std::unique_ptr<GameEngine> buildEngine(unsigned int playerCount)
+// The setup rather than a started engine: start() is what fires
+// onGameStarted(), so most of these cases need their observers registered
+// before it and cannot be handed something already running.
+GameSetup observerSetup(unsigned int playerCount,
+                        GameStructure structure = GameStructure::S_181)
 {
-    auto engine = std::make_unique<GameEngine>(1u);
+    std::vector<std::unique_ptr<IMoveProvider>> providers;
 
     for(unsigned int i = 0 ; i < playerCount ; i++)
-        engine->addPlayer("P" + std::to_string(i), dummyProvider());
+        providers.push_back(dummyProvider());
 
-    engine->initializeScoreboard(GameStructure::S_181, false, false);
-    engine->initializeDeck(playerCount);
-
-    return engine;
+    return test::buildSetup(structure, std::move(providers), 1u);
 }
 }
 
 TEST_CASE("GameEngine fires onGameStarted when the game starts", "[observer]")
 {
-    auto enginePtr = buildEngine(3);
+    auto enginePtr = std::make_unique<GameEngine>();
     GameEngine& engine = *enginePtr;
     CountingObserver observer;
     engine.addObserver(&observer);
@@ -70,7 +70,7 @@ TEST_CASE("GameEngine fires onGameStarted when the game starts", "[observer]")
     REQUIRE(observer.gameStarted == 0);
     REQUIRE(engine.getPhase() == GamePhase::NotStarted);
 
-    engine.setStatus(GameStatus::InProgress);
+    engine.start(observerSetup(3));
 
     REQUIRE(observer.gameStarted == 1);
 
@@ -83,45 +83,35 @@ TEST_CASE("GameEngine fires onGameStarted when the game starts", "[observer]")
     // still NotStarted until the first deal moves it to Betting.
     REQUIRE(observer.phaseAtStart == GamePhase::NotStarted);
 
-    SECTION("and only once, however often InProgress is set again")
+    SECTION("and only once, because a second start is refused outright")
     {
-        engine.setStatus(GameStatus::InProgress);
-        engine.setStatus(GameStatus::InProgress);
+        // setStatus() used to let InProgress be re-set as a silent no-op, which
+        // kept the count at one by not doing anything. start() rejects it
+        // instead: there is no longer a way to ask for a start that is not a
+        // start, and a game that is already running has nothing to re-do.
+        REQUIRE_THROWS_AS(engine.start(observerSetup(3)), std::logic_error);
 
         REQUIRE(observer.gameStarted == 1);
+        REQUIRE(engine.getStatus() == GameStatus::InProgress);
+        REQUIRE(engine.isInProgress());
     }
 
     SECTION("and neither ending can be asked for from outside")
     {
         // Both terminal states belong to the engine, and both owe observers a
         // callback: onGameOver() arrives with the last round, onGameStopped()
-        // at the trick boundary requestStop() lands on. Writing either here
-        // used to be allowed and notified nobody, which left every renderer
-        // parked on a game that had silently ended - and unrecoverably so,
-        // since a terminal status refuses to go back to InProgress.
-        REQUIRE_THROWS_AS(engine.setStatus(GameStatus::Finished), std::logic_error);
-        REQUIRE_THROWS_AS(engine.setStatus(GameStatus::Stopped), std::logic_error);
-
+        // at the trick boundary requestStop() lands on. There is no longer any
+        // way to write one from outside at all - setStatus() is gone, and
+        // start() only ever moves NotStarted to InProgress - so what used to
+        // need three rejections is now absent from the API.
         REQUIRE(engine.getStatus() == GameStatus::InProgress);
         REQUIRE(engine.isInProgress());
-    }
-
-    SECTION("and a started game cannot be returned to NotStarted")
-    {
-        engine.setStatus(GameStatus::InProgress);
-
-        // Otherwise the next move back to InProgress reads as a first start and
-        // fires onGameStarted() again, on a game that is already part-played.
-        REQUIRE_THROWS_AS(engine.setStatus(GameStatus::NotStarted), std::logic_error);
-
-        REQUIRE(engine.getStatus() == GameStatus::InProgress);
-        REQUIRE(observer.gameStarted == 1);
     }
 }
 
 TEST_CASE("GameEngine::addObserver ignores a repeat registration", "[observer]")
 {
-    auto enginePtr = buildEngine(3);
+    auto enginePtr = std::make_unique<GameEngine>();
     GameEngine& engine = *enginePtr;
     CountingObserver observer;
 
@@ -129,7 +119,7 @@ TEST_CASE("GameEngine::addObserver ignores a repeat registration", "[observer]")
     engine.addObserver(&observer);
     engine.addObserver(&observer);
 
-    engine.setStatus(GameStatus::InProgress);
+    engine.start(observerSetup(3));
 
     // Registered three times, told once - otherwise a client that registers
     // defensively would render every frame three times over.
@@ -138,13 +128,13 @@ TEST_CASE("GameEngine::addObserver ignores a repeat registration", "[observer]")
 
 TEST_CASE("GameEngine::removeObserver stops the callbacks", "[observer]")
 {
-    auto enginePtr = buildEngine(3);
+    auto enginePtr = std::make_unique<GameEngine>();
     GameEngine& engine = *enginePtr;
     CountingObserver observer;
 
     engine.addObserver(&observer);
     engine.removeObserver(&observer);
-    engine.setStatus(GameStatus::InProgress);
+    engine.start(observerSetup(3));
 
     REQUIRE(observer.gameStarted == 0);
 
@@ -155,7 +145,7 @@ TEST_CASE("GameEngine::removeObserver stops the callbacks", "[observer]")
 
 TEST_CASE("GameEngine::addObserver rejects null", "[observer]")
 {
-    auto enginePtr = buildEngine(3);
+    auto enginePtr = std::make_unique<GameEngine>();
     GameEngine& engine = *enginePtr;
 
     // Stored, this would be dereferenced at the first callback, a long way from
@@ -165,14 +155,14 @@ TEST_CASE("GameEngine::addObserver rejects null", "[observer]")
 
 TEST_CASE("GameEngine dispatches to every registered observer", "[observer]")
 {
-    auto enginePtr = buildEngine(3);
+    auto enginePtr = std::make_unique<GameEngine>();
     GameEngine& engine = *enginePtr;
     CountingObserver first;
     CountingObserver second;
 
     engine.addObserver(&first);
     engine.addObserver(&second);
-    engine.setStatus(GameStatus::InProgress);
+    engine.start(observerSetup(3));
 
     REQUIRE(first.gameStarted == 1);
     REQUIRE(second.gameStarted == 1);
@@ -215,7 +205,7 @@ TEST_CASE("The observer list cannot be changed from inside a callback", "[observ
         }
     };
 
-    auto enginePtr = buildEngine(3);
+    auto enginePtr = std::make_unique<GameEngine>();
     GameEngine& engine = *enginePtr;
 
     SelfMutatingObserver mutator;
@@ -234,7 +224,7 @@ TEST_CASE("The observer list cannot be changed from inside a callback", "[observ
         engine.addObserver(&mutator);
         engine.addObserver(&next);
         engine.addObserver(&last);
-        engine.setStatus(GameStatus::InProgress);
+        engine.start(observerSetup(3));
 
         REQUIRE(mutator.threw);
 
@@ -254,7 +244,7 @@ TEST_CASE("The observer list cannot be changed from inside a callback", "[observ
         mutator.observerToAdd = &latecomer;
 
         engine.addObserver(&mutator);
-        engine.setStatus(GameStatus::InProgress);
+        engine.start(observerSetup(3));
 
         REQUIRE(mutator.threw);
 
@@ -272,7 +262,7 @@ TEST_CASE("The observer list cannot be changed from inside a callback", "[observ
         mutator.removeSelf = true;
 
         engine.addObserver(&mutator);
-        engine.setStatus(GameStatus::InProgress);
+        engine.start(observerSetup(3));
 
         REQUIRE(mutator.threw);
         REQUIRE_NOTHROW(engine.removeObserver(&mutator));
@@ -303,7 +293,7 @@ TEST_CASE("A nested dispatch leaves the outer one guarded", "[observer]")
         }
     };
 
-    auto enginePtr = buildEngine(3);
+    auto enginePtr = std::make_unique<GameEngine>();
     GameEngine& engine = *enginePtr;
 
     struct RemovingObserver : IGameObserver
@@ -337,7 +327,7 @@ TEST_CASE("A nested dispatch leaves the outer one guarded", "[observer]")
     engine.addObserver(&remover);
     engine.addObserver(&last);
 
-    engine.setStatus(GameStatus::InProgress);
+    engine.start(observerSetup(3));
 
     REQUIRE(nester.nested);
 
@@ -365,14 +355,13 @@ namespace
 {
 std::unique_ptr<GameEngine> buildScriptedGame(unsigned int playerCount, GameStructure structure)
 {
-    auto engine = std::make_unique<GameEngine>(5u);
+    std::vector<std::unique_ptr<IMoveProvider>> providers;
 
     for(unsigned int i = 0 ; i < playerCount ; i++)
-        engine->addPlayer("P" + std::to_string(i), std::make_unique<ScriptedMoveProvider>());
+        providers.push_back(std::make_unique<ScriptedMoveProvider>());
 
-    engine->initializeScoreboard(structure, false, false);
-    engine->initializeDeck(playerCount);
-    engine->setStatus(GameStatus::InProgress);
+    auto engine = std::make_unique<GameEngine>();
+    engine->start(test::buildSetup(structure, std::move(providers), 5u));
 
     return engine;
 }
@@ -684,13 +673,13 @@ TEST_CASE("run() and playRound() are refused while a round is in flight", "[obse
         reenterer = &fromBetRequested;
     }
 
-    auto enginePtr = buildEngine(3);
+    auto enginePtr = std::make_unique<GameEngine>();
     GameEngine& engine = *enginePtr;
 
     reenterer->engine = &engine;
     engine.addObserver(reenterer);
 
-    engine.setStatus(GameStatus::InProgress);
+    engine.start(observerSetup(3));
     engine.run();
 
     REQUIRE(reenterer->attempts == 1);
@@ -733,21 +722,22 @@ TEST_CASE("A move provider cannot drive the game either", "[observer]")
         }
     };
 
-    auto enginePtr = std::make_unique<GameEngine>(1u);
+    auto enginePtr = std::make_unique<GameEngine>();
     GameEngine& engine = *enginePtr;
 
     auto owned = std::make_unique<DrivingProvider>();
     DrivingProvider& provider = *owned;
     provider.engine = &engine;
 
-    engine.addPlayer("P0", std::move(owned));
-    engine.addPlayer("P1", dummyProvider());
-    engine.addPlayer("P2", dummyProvider());
+    GameSetup setup;
+    setup.structure = GameStructure::S_181;
+    setup.endWithForeheadAndHidden = false;
+    setup.shuffleSeed = 1u;
+    setup.seats.push_back(SeatSetup{ "P0", std::move(owned) });
+    setup.seats.push_back(SeatSetup{ "P1", dummyProvider() });
+    setup.seats.push_back(SeatSetup{ "P2", dummyProvider() });
 
-    engine.initializeScoreboard(GameStructure::S_181, false, false);
-    engine.initializeDeck(3);
-
-    engine.setStatus(GameStatus::InProgress);
+    engine.start(std::move(setup));
     engine.run();
 
     REQUIRE(provider.attempts == 1);
@@ -760,10 +750,10 @@ TEST_CASE("The ban on driving lifts once the round is over", "[observer]")
     // The flag is lowered on the way out of playRound(), including the way out
     // a stop takes, so a client that drives rounds itself is not met with a
     // stale refusal on the next one.
-    auto enginePtr = buildEngine(3);
+    auto enginePtr = std::make_unique<GameEngine>();
     GameEngine& engine = *enginePtr;
 
-    engine.setStatus(GameStatus::InProgress);
+    engine.start(observerSetup(3));
 
     REQUIRE_NOTHROW(engine.playRound());
     REQUIRE_NOTHROW(engine.playRound());

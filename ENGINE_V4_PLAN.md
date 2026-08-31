@@ -394,11 +394,14 @@ public:
     // resetCurrentRoundScore() is the commit (Player.cpp:66-75).
     //
     // A scoreboard wanting the projected total - which is what
-    // getPlayerRoundScores() returned as its second element, and what the
-    // terminal renders today - must add the two: getTotalScore(s) +
-    // getRoundScore(s). Rendering getTotalScore() alone shows a different
-    // number inside onRoundScored than inside onRoundComplete, for the same
-    // round. See Phase 3 point 6.
+    // getPlayerRoundScores() returned as its second element - must add the two:
+    // getTotalScore(s) + getRoundScore(s). Rendering getTotalScore() alone shows
+    // a different number inside onRoundScored than inside onRoundComplete, for
+    // the same round.
+    //
+    // Phase 3 note: the terminal does NOT render the projected total and never
+    // did - it draws Round and committed Total as separate columns, and only
+    // from onRoundScored. See the correction at Phase 3 point 6.
     int getRoundScore(Seat) const;
     int getTotalScore(Seat) const;
 };
@@ -411,7 +414,8 @@ public:
 > `playFullGame()` in the test harness already returns `std::unique_ptr<GameEngine>`.
 
 **Why the move constructor is deleted, precisely.** It is not fixing an aliasing hazard: `PlayerList`
-(a `std::vector` from Phase 1), `Scoreboard` and `Deck` all move by relocating their internal
+(a `std::deque` from Phase 1 — an earlier draft of this line said `std::vector`), `Scoreboard` and
+`Deck` all move by relocating their internal
 buffer, not their elements, so a `Card*` or `Seat` held elsewhere stays valid across a `GameEngine`
 move even pre-Phase-4. The real reason is narrower — nothing in this plan ever needs to move a live
 engine, and deleting the operation is cheaper than auditing every current and future member (a
@@ -493,6 +497,13 @@ keeps it once `start()` is what sets the status.
 > exposes it, joins `getStatus()`/`getPhase()`/`isInProgress()`/`getPlayerCount()` in the
 > always-callable set, and `getPhase()` now says explicitly that it does not answer this. Phase 3
 > can fold it into `getStatus() != NotStarted` once `start()` does both at once.
+>
+> > **Phase 3 outcome: the two conditions merged, and the method was kept.** `requireStarted()` and
+> > `isSetUp()` both read `status != NotStarted` now. `isSetUp()` stays as a method of its own
+> > because it is the one that states what a client wants to know, and because it is a precondition
+> > on *reading state* rather than a fact about the game's progress — a finished or stopped game is
+> > still readable, and `isSetUp()` says so without the reader having to work out which statuses
+> > that spans.
 
 **Two of these have no caller yet.** ~~`getBiddingOrder(Seat)` and~~ `Trick::getCardPlayedBy(Seat)`
 (§3.5) is not used by any phase or client migration in this plan. Every accessor added now costs a
@@ -836,7 +847,7 @@ change the engine's public API, so the terminal client stops compiling the momen
 | 0 — testability | **One narrow exception, otherwise none as planned.** `SetupWizard`'s custom-setup path let a spectator pick "1 bot" (no human seat), which `initializeDeck`'s new player-count guards turned from a degenerate game into a thrown exception; fixed by raising the minimum to 2 bots when spectating. Nothing else needed to change for the terminal to build and play. | `SetupWizard.cpp`, `engine-v4` branch, commit `949fee0` |
 | 1 — seats | **Done.** Narrower than predicted: **two files**, since `ConsoleMoveProvider`, `Renderer`, `CardFormat`, `SetupWizard` and `Pacer` touch only `BetContext`/`PlayContext`/`Card`, none of which this phase changed. `Seat` is a struct with an explicit constructor (§3.1), so a seat built from a loop index is `Seat{i}` and an index taken from a seat is `seat.index` | `TerminalRomanianWhist.{h,cpp}` (every iterator use; `seatOf`, both `setResult` call sites and the `tricksWon` vector all deleted; `Player` access goes through `GameEngine::getPlayer(Seat)`; `trick.getPlayedCards()` → `trick.cardsInPlayOrder()` where a flat card list is wanted), `GameView.cpp` (`hasBet`/`getBet` by name → by seat, `getActual` → `getTricksWon`) |
 | 2 — engine owns the loop | **Done.** As predicted, and confined to the two files named: `TerminalRomanianWhist.{h,cpp}` is now an `IGameObserver`, with `loop()`, `playCurrentRoundTricks()`, `markCurrentlyWinning()` and the `openingSeat` member all deleted; `GameView.cpp` lost `openingSeat`, rebuilds `view.table` from `getCurrentTrick()`, and absorbed the winning-card highlight via `getCurrentTrickLeader()`. `Pacer` calls moved into the callbacks — note `resetSkip()` belongs at the end of `onBettingComplete`, not `onRoundStarted`. Verified by a byte-identical 15,668-line rendered game | `TerminalRomanianWhist.{h,cpp}`, `GameView.{h,cpp}` |
-| 3 — setup | Small | `applySetup()` → builds a `GameSetup`; `Renderer::drawGameOver` takes `std::vector<Standing>`; the scoreboard rows move off `getPlayerRoundScores()` onto `getRoundScore(Seat)` / `getTotalScore(Seat)` |
+| 3 — setup | **Done.** As predicted and confined to four files, plus one addition: `applySetup()` → `buildSetup()` returning a `GameSetup` (it no longer touches the engine, but still sets `view.humanSeat`); `Renderer::drawGameOver` takes `std::vector<Standing>`; `GameView`'s scoreboard rows moved off `Player` onto `getRoundScore(Seat)`/`getTotalScore(Seat)`. **A permanent `--seed=<n>` flag was added** so `--demo --no-animate --seed=N` is a repeatable transcript — it feeds `GameSetup::shuffleSeed` and, offset per seat, `RandomCardStrategy`. Verified by four byte-identical 15,668-line rendered games | `TerminalRomanianWhist.{h,cpp}`, `GameView.cpp`, `Renderer.{h,cpp}`, `AppOptions.{h,cpp}` |
 | 4 — cards by value | Moderate | `ConsoleMoveProvider.cpp` (`layOutHand`, index-returning `playCard`), `CardFormat.{h,cpp}`, `GameView.cpp` |
 | 5 — Forehead/Hidden | Small but visible | `ConsoleMoveProvider` (blind bid prompt), `Renderer`/`GameView` (ask `canSeeHand()` per seat instead of deciding from `humanSeat`) |
 | 6 — release | Submodule pin, README | — |
@@ -880,7 +891,7 @@ around. Starting it before Phase 3 lands means writing code twice.
 Each phase ends with the full test suite green and the terminal client playable. **Do not
 proceed to the next phase until both hold** — see §4 for what "playable" requires.
 
-**Progress: Phases 0, 1 and 2 done, engine and terminal both. Phases 3–6 not started — Phase 3 is next.**
+**Progress: Phases 0, 1, 2 and 3 done, engine and terminal both. Phases 4–6 not started — Phase 4 is next.**
 
 ### Phase 0 — Make the engine testable, then pin its behaviour [DONE]
 
@@ -1714,7 +1725,7 @@ were the kind a reader would act on.
 
 ---
 
-### Phase 3 — Setup consolidation [NOT STARTED]
+### Phase 3 — Setup consolidation [DONE]
 
 1. Add `GameSetup`, `SeatSetup`, `GameEngine::start(GameSetup)`. Fold Phase 0b's interim
    `GameEngine(std::uint32_t seed)` constructor into `GameSetup::shuffleSeed` and delete it,
@@ -1748,10 +1759,20 @@ were the kind a reader would act on.
    `vector<pair<string, pair<int, int>>>`, which is unreadable at the call site and keyed by name
    like everything Phase 1 just moved off names. Replace it with the seat-indexed
    `getRoundScore(Seat)` / `getTotalScore(Seat)` already listed in §3.3, and update the terminal's
-   scoreboard rendering to ask per seat. Note that the old function's second element is
-   `total + currentRound` (the *projected* total, not the committed one) — preserve that
-   distinction wherever it is displayed, or the scoreboard will read differently between
-   `onRoundScored` and `onRoundComplete`.
+   scoreboard rendering to ask per seat.
+
+   > **Correction, from doing it: the projected-total warning this point used to carry was based on
+   > a false premise.** It said the old function's second element is `total + currentRound` (the
+   > projected total) and that the distinction had to be preserved "wherever it is displayed".
+   > Nowhere displayed it. `getPlayerRoundScores()` had **zero consumers** in either repo — the
+   > terminal read the two numbers straight off `Player` (`GameView.cpp`) and rendered them as
+   > separate `Round` and `Total` columns, the total being the *committed* one. And the round
+   > summary is drawn only from `onRoundScored`, never from `onRoundComplete`, so the
+   > reads-differently-either-side-of-the-commit hazard was unreachable. Deleting the function cost
+   > nothing and preserved nothing; the terminal change was a rename to the seat-indexed
+   > accessors, with identical values. The distinction between the two numbers is real and is now
+   > documented on the accessors themselves and pinned by a test — it just was never in danger
+   > here.
 
 #### Duplicate names are rejected — decided
 
@@ -1790,6 +1811,27 @@ quick-game path already skips bot names that collide with the human's; the golde
 distinct names. No client changes are needed.
 
 **Verify:** golden scores unchanged; 1-seat and 7-seat setups throw; terminal plays.
+
+#### What it came to
+
+- **`setStatus()` was deleted outright rather than made private.** Nothing inside the engine called
+  it — `completeCurrentRound()` and `honourStopIfRequested()` assign `status` directly — so once
+  `start()` owned the one legal transition there was no caller left. The four guards it carried
+  (two terminal-state rejections, the un-start rejection, the not-set-up rejection) went with it:
+  each described a way of misusing an API that no longer exists.
+- **`deckInitialized` and `scoreboardInitialized` went too.** With setup atomic, both are exactly
+  `status != NotStarted`, which is what `requireStarted()` and `isSetUp()` now read. `dealCards()`'s
+  two guards became one `requireStarted()`.
+- **`start()` validates everything before applying anything**, so a rejected setup leaves the engine
+  untouched and startable. That is what replaces the old fix-it-and-retry path, where a client
+  could half-set-up an engine, get an error, and patch it — and it is pinned by its own test.
+- **Test count went 72 → 70**, not because coverage shrank: four "second call"/"added after"
+  cases collapsed into one `start()` case, three unconstructible ones were deleted, and six new
+  ones arrived (empty name, byte-exact name comparison, no trimming, null provider, standings
+  ordering and seat identity, and the round-score/total split across the commit).
+- **The `--seed` flag earned itself immediately.** Four byte-identical 15,668-line transcripts are
+  a far stronger statement than "it played fine", and Phase 4's hard guarantee needs exactly this.
+  Land it before the phase it verifies, not after — there is no baseline to diff against otherwise.
 
 ---
 
@@ -2052,7 +2094,7 @@ refactor, and could ship on its own.
 2. IGameObserver; playRound()/run(); engine owns + validates play; terminal  [no behaviour change] [DONE]
    2a. run() beside the old loop, both paths asserted equal
    2b. old driving API goes private; duplicated loop deleted
-3. GameSetup + start(); validation consolidated; getStandings()              [no behaviour change]
+3. GameSetup + start(); validation consolidated; getStandings()              [no behaviour change] [DONE]
 4. cards by value; playCard returns an index; fixes retained-round aliasing  [no behaviour change]
 5. Forehead/Hidden: BetContext.roundType, canSeeHand(), one strategy         [changes play]
 6. docs, version 4.0.0, submodule pin
