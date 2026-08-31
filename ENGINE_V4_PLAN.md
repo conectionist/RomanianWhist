@@ -404,6 +404,12 @@ public:
 };
 ```
 
+> **Phase 2 note: the deletions below are now partly redundant.** `requestStop()` needs an
+> `std::atomic<bool>` member, which already makes `GameEngine` non-copyable and non-movable. The
+> explicit `= delete`s are still worth keeping as a statement of intent, but the constraint they
+> describe is enforced by a member either way — and it arrived a phase early, which is why
+> `playFullGame()` in the test harness already returns `std::unique_ptr<GameEngine>`.
+
 **Why the move constructor is deleted, precisely.** It is not fixing an aliasing hazard: `PlayerList`
 (a `std::vector` from Phase 1), `Scoreboard` and `Deck` all move by relocating their internal
 buffer, not their elements, so a `Card*` or `Seat` held elsewhere stays valid across a `GameEngine`
@@ -463,17 +469,41 @@ started, walks straight into it. The failure is a read of arbitrary memory, not 
 **The rule:** every accessor whose answer depends on a current round throws `std::logic_error`
 when `getStatus() == GameStatus::NotStarted`. `getStatus()`, `getPhase()`, `isInProgress()` and
 `getPlayerCount()` stay callable at all times and are how a client asks whether the rest are safe
-— `getPhase()` returning `GamePhase::NotStarted` is the supported way to find out.
+— ~~`getPhase()` returning `GamePhase::NotStarted` is the supported way to find out.~~ See the
+second correction below: it is `isSetUp()`.
 
 Implement it as one private `requireStarted()` guard rather than a check per accessor, so a
 future accessor cannot be added without one. Phase 2 adds the guard alongside the accessors; Phase 3
 keeps it once `start()` is what sets the status.
 
-**Two of these have no caller yet.** `getBiddingOrder(Seat)` and `Trick::getCardPlayedBy(Seat)`
-(§3.5) are not used by any phase or client migration in this plan. Every accessor added now costs a
+> **Phase 2 correction: the guard keys on `scoreboardInitialized`, not on the status.** The
+> undefined behaviour is `Scoreboard::getCurrentRound()` indexing an empty vector, so that is the
+> precondition worth testing. Keying on the status is wrong in both directions while setup is still
+> per-method: it passes after a bare `setStatus(InProgress)` with no schedule built, and it fails
+> for tests that legitimately read round state without setting a status. Phase 3's `start()` does
+> both at once and the two conditions become the same thing — at which point either spelling works
+> and this one still reads as the reason.
+
+> **Phase 2 correction (post-review): the predicate a client asks with is `isSetUp()`, not the
+> phase.** Keying the guard on `scoreboardInitialized` while still advertising
+> `getPhase() == GamePhase::NotStarted` as the way to ask left the two disagreeing, and the phase
+> is wrong in both directions — it is still `NotStarted` right through `onGameStarted`, where
+> every round-scoped accessor already answers, which `IGameObserver.h` promises in the same
+> breath. The real precondition was private, so a client had nothing honest to ask. `isSetUp()`
+> exposes it, joins `getStatus()`/`getPhase()`/`isInProgress()`/`getPlayerCount()` in the
+> always-callable set, and `getPhase()` now says explicitly that it does not answer this. Phase 3
+> can fold it into `getStatus() != NotStarted` once `start()` does both at once.
+
+**Two of these have no caller yet.** ~~`getBiddingOrder(Seat)` and~~ `Trick::getCardPlayedBy(Seat)`
+(§3.5) is not used by any phase or client migration in this plan. Every accessor added now costs a
 `requireStarted()` guard and a row of test coverage, and one with no consumer is one whose contract
 nobody has checked against a real need. Either name the caller — a Qt bidding panel and a web
-`GET /game/{id}` payload are the plausible ones — or leave them out until one exists.
+`GET /game/{id}` payload are the plausible ones — or leave it out until one exists.
+
+> **Phase 2 correction: `getBiddingOrder(Seat)` did have a caller.** `GameView.cpp` was computing
+> `((i + playerCount - openingSeat) % playerCount) + 1` by hand — which is this function, and is
+> exactly the turn-order arithmetic §3.5 argues belongs in the engine. It was added in Phase 2 and
+> the client now asks. `Trick::getCardPlayedBy(Seat)` still has no caller and stays out.
 
 **Removed from the public API** (all become private implementation details of `playRound()`):
 `shuffleDeck`, `dealCards`, `placeBet`, `addTrickToCurrentRound`, `determineTrickWinner`,
@@ -805,7 +835,7 @@ change the engine's public API, so the terminal client stops compiling the momen
 |---|---|---|
 | 0 — testability | **One narrow exception, otherwise none as planned.** `SetupWizard`'s custom-setup path let a spectator pick "1 bot" (no human seat), which `initializeDeck`'s new player-count guards turned from a degenerate game into a thrown exception; fixed by raising the minimum to 2 bots when spectating. Nothing else needed to change for the terminal to build and play. | `SetupWizard.cpp`, `engine-v4` branch, commit `949fee0` |
 | 1 — seats | **Done.** Narrower than predicted: **two files**, since `ConsoleMoveProvider`, `Renderer`, `CardFormat`, `SetupWizard` and `Pacer` touch only `BetContext`/`PlayContext`/`Card`, none of which this phase changed. `Seat` is a struct with an explicit constructor (§3.1), so a seat built from a loop index is `Seat{i}` and an index taken from a seat is `seat.index` | `TerminalRomanianWhist.{h,cpp}` (every iterator use; `seatOf`, both `setResult` call sites and the `tricksWon` vector all deleted; `Player` access goes through `GameEngine::getPlayer(Seat)`; `trick.getPlayedCards()` → `trick.cardsInPlayOrder()` where a flat card list is wanted), `GameView.cpp` (`hasBet`/`getBet` by name → by seat, `getActual` → `getTricksWon`) |
-| 2 — engine owns the loop | **Substantial rewrite** | `TerminalRomanianWhist.{h,cpp}` becomes observer callbacks; `markCurrentlyWinning` switches to `getCurrentTrickLeader()`; `GameView.cpp` loses `openingSeat` and rebuilds `view.table` from `getCurrentTrick()`'s seats; `Pacer` calls move into the callbacks. `startGame()` keeps its v3 setup sequence this phase — §3.7 shows the post-Phase-3 shape, Phase 2 step 9 the interim one |
+| 2 — engine owns the loop | **Done.** As predicted, and confined to the two files named: `TerminalRomanianWhist.{h,cpp}` is now an `IGameObserver`, with `loop()`, `playCurrentRoundTricks()`, `markCurrentlyWinning()` and the `openingSeat` member all deleted; `GameView.cpp` lost `openingSeat`, rebuilds `view.table` from `getCurrentTrick()`, and absorbed the winning-card highlight via `getCurrentTrickLeader()`. `Pacer` calls moved into the callbacks — note `resetSkip()` belongs at the end of `onBettingComplete`, not `onRoundStarted`. Verified by a byte-identical 15,668-line rendered game | `TerminalRomanianWhist.{h,cpp}`, `GameView.{h,cpp}` |
 | 3 — setup | Small | `applySetup()` → builds a `GameSetup`; `Renderer::drawGameOver` takes `std::vector<Standing>`; the scoreboard rows move off `getPlayerRoundScores()` onto `getRoundScore(Seat)` / `getTotalScore(Seat)` |
 | 4 — cards by value | Moderate | `ConsoleMoveProvider.cpp` (`layOutHand`, index-returning `playCard`), `CardFormat.{h,cpp}`, `GameView.cpp` |
 | 5 — Forehead/Hidden | Small but visible | `ConsoleMoveProvider` (blind bid prompt), `Renderer`/`GameView` (ask `canSeeHand()` per seat instead of deciding from `humanSeat`) |
@@ -850,7 +880,7 @@ around. Starting it before Phase 3 lands means writing code twice.
 Each phase ends with the full test suite green and the terminal client playable. **Do not
 proceed to the next phase until both hold** — see §4 for what "playable" requires.
 
-**Progress: Phases 0 and 1 done, engine and terminal both. Phases 2–6 not started — Phase 2 is next.**
+**Progress: Phases 0, 1 and 2 done, engine and terminal both. Phases 3–6 not started — Phase 3 is next.**
 
 ### Phase 0 — Make the engine testable, then pin its behaviour [DONE]
 
@@ -1237,7 +1267,7 @@ Three fixes on top of the above, all with the golden scores still unmoved:
 
 ---
 
-### Phase 2 — The engine owns the loop [NOT STARTED]
+### Phase 2 — The engine owns the loop [DONE]
 
 The core of the refactor.
 
@@ -1285,6 +1315,12 @@ The core of the refactor.
    `getCurrentTrumpCard()` to the non-const overload. Mark `cardBeats` const and it picks the
    const one. Phase 4 dissolves the problem when trump becomes a value, but Phase 2 needs it
    first.)
+
+   **Superseded — build `getCurrentTrickLeader()` on `determineTrickWinner`.** Phase 1 gave the
+   trick a seat per card, so `determineTrickWinner` already ranks a partly played trick *and* reads
+   the winner's seat straight off the winning entry, with no card-to-seat lookup at all. It is also
+   what `markCurrentlyWinning()` called, which makes the port exact by construction. The original
+   advice, which predates Phase 1, follows:
 
    **Build `getCurrentTrickLeader()` on `CardValidator::getWinningCard`, not on a second ranking
    loop.** That function already copes with a partly played trick — its header says so — and it
@@ -1450,6 +1486,223 @@ trick. Phase 6 only writes them down.
 **Verify:** golden scores unchanged; the both-paths-agree test passes before step 8 lands; the
 `requestStop()` tests from step 5 pass; terminal plays a full game, with pacing and
 Enter-to-continue behaving as before.
+
+#### What implementing it found, beyond the checklist above
+
+Landed as seven commits — the plan's 2a/2b split turned into five engine commits plus the client
+and this write-up. The golden scores did not move, and the terminal's rendered game is
+byte-identical (below). Seven things the checklist above got wrong or did not mention:
+
+- **`getRoundLeaderSeat()` silently flipped meaning, and nothing would have broken to say so.**
+  `GameEngine::getRoundLeaderSeat()` delegated to `Round::getLeaderSeat()`, which is the *moving*
+  leader; §3.3 gives that name to the *fixed* one. The single method served both jobs only because
+  bidding runs immediately after the deal, while the two are equal. A rename in place would have
+  compiled everywhere and been wrong in one place. It was done as its own first commit, **deleting
+  the old name outright** so every call site failed to compile — which is how `GameHarness.cpp`'s
+  per-trick use was caught as a genuine misuse rather than carried forward.
+- **`getBiddingOrder(Seat)` had a caller after all.** §3.3 says to leave it out for want of one;
+  `GameView.cpp` was computing `((i + playerCount - openingSeat) % playerCount) + 1` by hand, which
+  is exactly it, and exactly the turn-order arithmetic §3.5 wants out of clients. Added, and the
+  client now asks. `Trick::getCardPlayedBy(Seat)` still has no caller and stays out.
+- **`getCurrentTrickLeader()` is built on `determineTrickWinner`, not `CardValidator::getWinningCard`.**
+  Step 4's advice predates Phase 1. `determineTrickWinner` already ranks a partly played trick *and*
+  reads the winner's seat off the winning `PlayedCard`, so it needs no card-to-seat pointer scan —
+  and it is literally what `markCurrentlyWinning()` called, which makes the port exact by
+  construction.
+- **`cardBeats` was already `const`**, so step 4's stated prerequisite was already satisfied.
+- **`requireStarted()` keys on `scoreboardInitialized`, not `status == NotStarted`.** The undefined
+  behaviour it prevents is `Scoreboard::getCurrentRound()` indexing an empty vector, and that is the
+  precondition it should test. A status-keyed guard is wrong in both directions here: it passes
+  after a bare `setStatus(InProgress)` with no schedule, and it fails for the eleven existing tests
+  that legitimately read round state without setting a status. Phase 3's `start()` makes the two
+  conditions identical.
+- **Making the driving API private broke `tests/GameEngineTests.cpp`, which the plan did not
+  mention, and it was the largest single cost in the phase.** `skipRounds()` fast-forwarded the
+  schedule with `completeCurrentRound()`; the forbidden-bet and bet-legality cases drove
+  `placeBet()` directly; four sections tested `determineTrickWinner()` directly. All of it was
+  rewritten around a new `tests/ScriptedMoveProvider.h` — a provider answering from a canned script
+  — plus observers that assert in situ. The bidding-rule tests are better for it: they now check the
+  rule where it is actually used, against an expectation derived from `getBiddingOrder()` rather
+  than from the bet count `getForbiddenBet()` itself uses. `determineTrickWinner`'s ranking moved to
+  new `CardValidator::getWinningCard` cases; its seat attribution moved to `ObserverTests`.
+- **`onGameOver` / `onGameStopped` fire from `playRound()` and the stop helper, not only from
+  `run()`.** §3.2's "once, after the loop leaves" stays true of `run()` either way, and firing them
+  where the transition actually happens means a client driving `playRound()` itself is told the same
+  things in the same order rather than silently told nothing.
+
+Two ambiguities in §3.2 that the terminal's byte-exactness turned out to depend on, now pinned:
+
+- **`getActiveSeat()` stays engaged through `onBetPlaced` and `onCardPlayed`**, and is cleared
+  before `onBettingComplete` and `onTrickWon`. The frame drawn after a move still highlights whoever
+  made it.
+- **The in-flight trick is reset at the deal as well as at each `onTrickStarted`**, so
+  `getCurrentTrick()` is empty throughout betting rather than holding the previous round's last
+  trick.
+
+And one consequence nothing anticipated:
+
+- **`std::atomic<bool> stopRequested` makes `GameEngine` non-copyable and non-movable**, which broke
+  `playFullGame()` returning one by value. Every holder moved to `std::unique_ptr<GameEngine>` —
+  which is what §3.3 says a web backend must do anyway, arriving a phase early. §3.3's explicit
+  `= delete`s are now partly redundant: the atomic already suppresses both.
+
+Client-side, three things the plan flagged as silent-bug risks, and what they actually needed:
+
+- **`pacer.resetSkip()` belongs at the end of `onBettingComplete`, not in `onRoundStarted`.** It sat
+  at the top of `playCurrentRoundTricks()`, *after* the two bidding beats, and `roundPause()` never
+  clears the flag — so a skip started in round N deliberately survives through round N+1's bidding.
+- **`view.leadSeat` comes from the trick's first `PlayedCard`**, never from `getTrickLeaderSeat()`,
+  which has already moved to the winner by the time the trick-end screen is drawn. It falls back to
+  the trick leader only while nothing has been played.
+- **`refreshFromEngine` rebuilds `view.table` from `getCurrentTrick()`** and folds in
+  `markCurrentlyWinning()` via `getCurrentTrickLeader()`. It lost its `openingSeat` parameter and is
+  now a pure function of the engine.
+
+#### How it was verified
+
+Both presets green (57 tests), `-Wall -Wextra` clean in both repos, and the seven golden score
+vectors and both `RoundRecord` tables unchanged.
+
+The both-paths-agree test (`tests/BothPathsTests.cpp`, added in the loop commit and deleted with the
+duplicated loop) compared the two paths over the seven golden configurations plus a swept range of
+60 seeds, on final scores **and** the per-round bid/tricks record. Mutating `playTrick()` to start
+each trick from the round leader rather than the winner failed it while every golden test stayed
+green — which is exactly the gap it existed to cover, since the goldens still drove the manual path
+at that point.
+
+The client was checked by **byte-diffing a whole rendered game**, as in Phase 1: seed the engine and
+swap the demo's `RandomCardStrategy` for a deterministic bot (two throwaway patches, reverted
+afterwards), capture `--demo --no-animate` before and after. 15,668 lines, empty diff. Mutating
+`Round::getTricksWon` to read the neighbouring seat moves 13,490 lines, so the check is not vacuous.
+A full 26-round game was then played with a human seat as well as in the demo, since the demo is
+spectator-only and never exercises the "the human's provider draws its own frame" branch.
+
+**A lockdown check is worth repeating in Phase 3**, since that phase removes four more methods:
+compile a probe translation unit that tries each removed call and confirm every one fails. Eight
+were checked here — `placeBet`, `dealCards`, `completeCurrentRound`, `calculateScores`,
+`determineTrickWinner`, `getPlayer`, `Player::playCard`, `Player::getBet` — against a control that
+must still compile. A method that merely survives fails nothing, which is how `getPlayer()` would
+have quietly stayed reachable.
+
+#### What review found after the phase landed
+
+Five rounds of review on top of the above, all with the golden scores still unmoved and the
+`GoldenGameTests.cpp` values byte-untouched throughout. **72 tests now, up from 57**, and every
+behavioural fix was confirmed to fail its new test before it was applied.
+
+Almost all of it is one mistake made repeatedly: **the phase wrote contracts down in prose and
+enforced about half of them.** Worth carrying into Phase 3 as a checklist item rather than a
+lesson — every "must not", "only", and "fires once" in a header is a guard that does not exist
+until something rejects it.
+
+The other recurring shape is **state that has to move together and did not**: the round index and
+the trick number, the status and the stop flag.
+
+##### Round one: the stop and status contracts
+
+- **`Stopped` and `Finished` were not actually terminal.** `setStatus()` accepted any transition,
+  so re-entering `InProgress` on a finished game and calling `run()` re-dealt the round the
+  schedule was still parked on, overwrote its bets, and threw `round already has all its tricks`
+  from inside `Round::addTrick` — two calls away from the mistake and phrased as a `Round`
+  problem. On a stopped game the stop flag is never cleared, so it also fired `onGameStopped` a
+  second time, against its own "Fires once". Both reproduced against the built library. `setStatus`
+  now rejects any move off a terminal status, and any move back to `NotStarted` — which would
+  otherwise make the next `InProgress` read as a first start and re-fire `onGameStarted`.
+- **A stop landing during a round's *final* trick scored that round anyway.** The flag is read at
+  the top of each trick iteration, and the last trick has no iteration after it — so the loop fell
+  through to `calculateScores()` and committed the very round the stop was meant to abandon,
+  contradicting `onGameStopped`'s "left unscored". On the *final* round it was worse: the game
+  ended `Finished` with `onGameOver` and `onGameStopped` never fired at all, despite
+  `requestStop()`'s unconditional "status -> Stopped", and `run()`'s own between-rounds check
+  cannot help because there is no next round to catch it at. `playRound()` reads the flag once
+  more after the trick loop.
+- **`getPhase()`'s documented use was a lie in both directions** — see the §3.3 correction above.
+  `isSetUp()` is the fix.
+- **`tests/ScriptedMoveProvider.h` used `std::find` without including `<algorithm>`.** It compiled
+  only because Catch2 happens to be included first in every current TU; a TU that includes the
+  header first failed (verified, then verified fixed).
+
+##### Round two: contracts that refused nothing
+
+- **The observer list could be changed from inside a callback, corrupting the dispatch it was
+  called from.** The `notify*` helpers walk `observers` with a range-for whose end iterator is
+  fixed before the first callback runs, so an observer removing itself shifted the tail down
+  underneath it: with the remover registered first of three, the second was skipped entirely and
+  the third called twice — the second time through the slot the erase left behind, past the
+  vector's own size. `GameEngine.h` had forbidden this since the API was added, and unlike every
+  other misuse the engine guards, it failed in silence. A `DispatchGuard` raises a flag for the
+  length of each dispatch and `addObserver()`/`removeObserver()` throw while it is up.
+- **`onGameStarted()` could fire on an engine that was not set up.** `setStatus()` announced the
+  start without requiring the schedule, so a client that set `InProgress` before
+  `initializeScoreboard()` got the callback `IGameObserver.h` promises answers every round-scoped
+  accessor — and every one of them threw back out of `setStatus()` instead. Starting now requires
+  `isSetUp()`, which also freezes the table at the moment the game starts.
+- **A test that tested nothing, caught by trying to break it.** The observer-removal case had the
+  remover in the *middle* of three, where the skip and the double-dispatch cancel out and the
+  counts come back correct either way. Moved to first, it reproduces 0 and 2 exactly. Worth
+  repeating as a technique: disable the fix and confirm the new test actually fails.
+
+##### Round three: guards that were half-applied
+
+- **`setStatus()` could reach either terminal state without telling a single observer.** Both
+  endings belong to the engine and both carry a notification at the moment they happen, but
+  `setStatus()` wrote the status alone — and round two's terminal guard then made that
+  unrecoverable. A client wiring a quit button to the newly public `GameStatus::Stopped` stranded
+  every renderer on a game that had silently ended. Both terminal targets are now rejected;
+  `requestStop()` is the path that ends a game and notifies.
+- **`DispatchGuard` cleared the flag on the way out instead of restoring it, so dispatches did not
+  nest** — the inner guard's destructor disarmed the outer walk for the rest of its iteration, and
+  the `removeObserver()` the guard exists to reject was then accepted mid-walk. Exactly the
+  corruption round two added the guard to stop, silent again.
+- **`Round::addCardToCurrentTrick` checked the trick's size against the seat count but never that
+  the seat had already played**, so its own "one card per seat" comment was half enforced. Two
+  cards from one seat on a two-seat table is a full trick by count. Not reachable through
+  `playTrick()`, which walks the seats once — a guard-completeness gap rather than a live defect.
+
+##### Round four: boundaries the stop flag did not have
+
+- **`playRound()` never read the stop flag.** The check lived only in `run()`'s loop, but
+  `playRound()` is a documented entry point in its own right, so a client using it dealt and bid an
+  entire extra round after `requestStop()` — with a human provider, prompts for a hand thrown away
+  a moment later. The check moved to the top of `playRound()`, which leaves `run()`'s behaviour
+  identical while making both entry points honour a stop at the same boundaries.
+- **`completeCurrentRound()` advanced the round index and left the trick number behind**, so at
+  `onRoundComplete()` the engine reported a trick the round it now named had not played — and,
+  since the schedule's rounds differ in length, a number that round could not reach: "trick 8" over
+  a one-trick round.
+
+##### Round five: re-entrancy, and the last boundary
+
+- **`run()` and `playRound()` had no re-entrancy guard.** An observer or move provider that drove
+  the game from inside a callback re-entered `playRound()` on an engine halfway through a round:
+  `dealRound()` cleared the hands the outer trick loop was still playing from. From `onCardPlayed()`
+  a nested `run()` played the whole remaining schedule and fired `onGameOver()`, then returned into
+  an outer trick loop on a finished game. A `DrivingGuard` keyed on "a round is in flight" rather
+  than on `dispatching`, because the engine calls move providers *outside* any dispatch — an
+  observer-only guard would have missed the other way in.
+- **Bidding never read the stop flag either**, so a stop raised in `onRoundStarted()` or an early
+  seat's bid callbacks still walked the rest of the table. Same harm as round four's, one step
+  later.
+- **`IGameObserver`'s `onRoundScored` told clients to read `getRoundScore()` and `getTotalScore()`.
+  Neither exists** — they are Phase 3 API that reached a Phase 2 header from §3.3 of this document.
+  A client following the header would not have compiled. Now names `getPlayerRoundScores()` and
+  `getPlayerScores()`.
+
+##### Round six: two comments that were still wrong
+
+Contract text only, but this is a header two clients are meant to reason from, and both claims
+were the kind a reader would act on.
+
+- **`GamePhase` claimed `RoundScored` spans both `onRoundScored` and `onRoundComplete`.**
+  `completeCurrentRound()` moves the *final* round to `GameOver` before `notifyRoundComplete()`
+  fires, so an observer gating a round summary on `getPhase() == RoundScored` there silently skips
+  the last round.
+- **`onGameStopped` explained a late stop by saying both final-round callbacks "run after the game
+  has reached Finished".** They do not: inside `onRoundScored()` the status is still `InProgress`,
+  which a probe confirmed. The behaviour is right and the reason was wrong — what makes a late stop
+  a no-op is that *nothing reads the flag again*, not that the game has already ended. The test now
+  asserts the status at the moment the stop is asked for, so the corrected explanation is pinned
+  rather than merely written down.
 
 ---
 
@@ -1788,7 +2041,7 @@ refactor, and could ship on its own.
 ```
 0. 2-byte Card -> portable seeded shuffle -> 2..6 check -> tests -> goldens  [no behaviour change] [DONE]
 1. Seat + per-card seats in Trick; results derived; PlayerList -> deque      [no behaviour change] [DONE]
-2. IGameObserver; playRound()/run(); engine owns + validates play; terminal  [no behaviour change]
+2. IGameObserver; playRound()/run(); engine owns + validates play; terminal  [no behaviour change] [DONE]
    2a. run() beside the old loop, both paths asserted equal
    2b. old driving API goes private; duplicated loop deleted
 3. GameSetup + start(); validation consolidated; getStandings()              [no behaviour change]
@@ -1837,8 +2090,9 @@ and it is in the only place a behaviour change was ever intended.
   hand to bid and so the only one Phase 5 changes.
 - `include/romanian_whist/Player.h` — `getHand()` (30), public and needed by the renderer, which
   is why round-type blinding can never be enforcement (§3.6).
-- `../romanian_whist_terminal/src/TerminalRomanianWhist.cpp` — `loop()` (89-174) and
-  `playCurrentRoundTricks()` (176-282): the known-correct loop to port into `playRound()`.
+- ~~`../romanian_whist_terminal/src/TerminalRomanianWhist.cpp` — `loop()` and
+  `playCurrentRoundTricks()`: the known-correct loop to port into `playRound()`.~~ **Gone as of
+  Phase 2** — that loop is now `GameEngine::playRound()`. Read it there.
 - `../romanian_whist_terminal/src/GameView.cpp` — `refreshFromEngine`, which loses its
   `openingSeat` parameter once the engine keeps `getRoundLeaderSeat()`; lines 60 and 80-81 are
   the `getHand()` reads that make hand-blinding pointless, and line 52's `getActual` is one of
@@ -1846,9 +2100,9 @@ and it is in the only place a behaviour change was ever intended.
 - `../romanian_whist_terminal/src/ConsoleMoveProvider.cpp` — `layOutHand` (25-63) and `playCard` (107-144). Read them
   before writing Phase 4: the mapping it builds is *display order, legal subset*, not a hand
   index, which is why Phase 4's index boundary adds a translation here rather than removing one.
-- `../romanian_whist_terminal/src/TerminalRomanianWhist.cpp` — `markCurrentlyWinning` (284-293),
-  the only client code that calls `determineTrickWinner` on a *partial* trick; it is why
-  `getCurrentTrickLeader()` exists in §3.3.
+- ~~`../romanian_whist_terminal/src/TerminalRomanianWhist.cpp` — `markCurrentlyWinning`~~ — deleted
+  in Phase 2 and folded into `GameView.cpp`'s `rebuildTable()`, which asks
+  `getCurrentTrickLeader()` instead of ranking the trick itself.
 - `include/romanian_whist/PlayerList.h` — `std::list<Player>`, whose only reason to be a list is
   the iterator stability Phase 1 stops needing.
 - `QT_CLIENT_PLAN.md` — §3-4 are the worked example of the threading contract in §3.8, and the

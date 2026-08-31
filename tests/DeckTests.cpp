@@ -88,16 +88,12 @@ TEST_CASE("Two engines given the same seed play an identical game", "[deck]")
         return providers;
     };
 
-    RoundRecord recordA;
-    GameHooks hooksA;
-    hooksA.onRoundScored = recordRoundsInto(recordA);
-    GameEngine engineA = playFullGame(GameStructure::S_181, buildProviders(), seed, hooksA);
+    RoundRecorder recorderA;
+    const auto engineA = playFullGame(GameStructure::S_181, buildProviders(), seed, { &recorderA });
 
-    RoundRecord recordB;
-    GameHooks hooksB;
-    hooksB.onRoundScored = recordRoundsInto(recordB);
-    GameEngine engineB = playFullGame(GameStructure::S_181, buildProviders(), seed, hooksB);
+    RoundRecorder recorderB;
+    const auto engineB = playFullGame(GameStructure::S_181, buildProviders(), seed, { &recorderB });
 
-    REQUIRE(finalScores(engineA) == finalScores(engineB));
-    REQUIRE(recordA == recordB);
+    REQUIRE(finalScores(*engineA) == finalScores(*engineB));
+    REQUIRE(recorderA.record == recorderB.record);
 }

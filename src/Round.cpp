@@ -5,17 +5,17 @@
 namespace romanian_whist
 {
 Round::Round(unsigned int _trickCount,
-             Seat _opener,
+             Seat _roundLeader,
              unsigned int seatCount,
              RoundType _type) : bets(seatCount),
                                 trump(nullptr),
                                 trickCount(_trickCount),
                                 type(_type),
-                                leader(_opener),
-                                opener(_opener)
+                                trickLeaderSeat(_roundLeader),
+                                roundLeaderSeat(_roundLeader)
 {
-    if(_opener.index >= seatCount)
-        throw std::out_of_range("Round::Round: opener seat out of range");
+    if(_roundLeader.index >= seatCount)
+        throw std::out_of_range("Round::Round: round leader seat out of range");
 }
 
 void Round::addTrick(const Trick &trick)
@@ -69,22 +69,73 @@ unsigned int Round::getTrickCount() const
     return trickCount;
 }
 
-void Round::setLeaderSeat(Seat seat)
+void Round::setTrickLeaderSeat(Seat seat)
 {
     if(seat.index >= bets.size())
-        throw std::out_of_range("Round::setLeaderSeat: seat out of range");
+        throw std::out_of_range("Round::setTrickLeaderSeat: seat out of range");
 
-    leader = seat;
+    trickLeaderSeat = seat;
 }
 
-Seat Round::getLeaderSeat() const
+Seat Round::getTrickLeaderSeat() const
 {
-    return leader;
+    return trickLeaderSeat;
 }
 
-Seat Round::getOpenerSeat() const
+Seat Round::getRoundLeaderSeat() const
 {
-    return opener;
+    return roundLeaderSeat;
+}
+
+const Trick& Round::getCurrentTrick() const
+{
+    return currentTrick;
+}
+
+void Round::resetCurrentTrick()
+{
+    currentTrick = Trick();
+}
+
+void Round::addCardToCurrentTrick(Seat seat, Card* card)
+{
+    if(card == nullptr)
+        throw std::logic_error("Round::addCardToCurrentTrick: card must not be null");
+
+    if(seat.index >= bets.size())
+        throw std::out_of_range("Round::addCardToCurrentTrick: seat out of range");
+
+    // One card per seat, both ways round: more entries than seats would rank a
+    // card twice and hand the trick to whoever played last, and a seat playing
+    // twice does the same thing while leaving another seat short - which the
+    // size check alone never sees.
+    if(currentTrick.getPlayedCards().size() >= bets.size())
+        throw std::logic_error("Round::addCardToCurrentTrick: trick already has a card from every seat");
+
+    for(const PlayedCard& played : currentTrick.getPlayedCards())
+        if(played.seat.index == seat.index)
+            throw std::logic_error("Round::addCardToCurrentTrick: that seat has already "
+                                   "played a card in this trick");
+
+    // The first card sets the suit everyone else has to follow. Doing it here
+    // rather than leaving it to the caller is the point of the round owning the
+    // trick: there is no longer a way to add a card and forget.
+    if(!currentTrick.hasLeadSuit())
+        currentTrick.setLeadSuit(card->suit);
+
+    currentTrick.addPlayedCard(seat, card);
+}
+
+void Round::finishCurrentTrick(Seat winner)
+{
+    if(currentTrick.getPlayedCards().empty())
+        throw std::logic_error("Round::finishCurrentTrick: no trick in flight");
+
+    currentTrick.setWinner(winner);
+
+    // addTrick() does the range and capacity checking, and it is what makes the
+    // trick count towards getTricksWon() from here on.
+    addTrick(currentTrick);
 }
 
 void Round::setRoundType(RoundType _type)

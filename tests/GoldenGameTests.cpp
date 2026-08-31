@@ -45,27 +45,26 @@ std::vector<std::unique_ptr<IMoveProvider>> buildRoundRobinProviders(unsigned in
 
 TEST_CASE("Golden game: 2 players, S_181", "[golden]")
 {
-    GameEngine engine = playFullGame(GameStructure::S_181, buildRoundRobinProviders(2), kGoldenSeed);
-    REQUIRE(finalScores(engine) == std::vector<int>{ -36, 28 });
+    const auto engine = playFullGame(GameStructure::S_181, buildRoundRobinProviders(2), kGoldenSeed);
+    REQUIRE(finalScores(*engine) == std::vector<int>{ -36, 28 });
 }
 
 TEST_CASE("Golden game: 2 players, S_818", "[golden]")
 {
-    GameEngine engine = playFullGame(GameStructure::S_818, buildRoundRobinProviders(2), kGoldenSeed);
-    REQUIRE(finalScores(engine) == std::vector<int>{ -19, 4 });
+    const auto engine = playFullGame(GameStructure::S_818, buildRoundRobinProviders(2), kGoldenSeed);
+    REQUIRE(finalScores(*engine) == std::vector<int>{ -19, 4 });
 }
 
 TEST_CASE("Golden game: 4 players, S_181, with full round record", "[golden]")
 {
-    RoundRecord record;
+    RoundRecorder recorder;
 
-    GameHooks hooks;
-    hooks.onRoundScored = recordRoundsInto(record);
+    const auto engine = playFullGame(GameStructure::S_181, buildRoundRobinProviders(4), kGoldenSeed,
+                                     { &recorder });
+    const RoundRecord& record = recorder.record;
 
-    GameEngine engine = playFullGame(GameStructure::S_181, buildRoundRobinProviders(4), kGoldenSeed, hooks);
-
-    REQUIRE(finalScores(engine) == std::vector<int>{ 39, 56, 10, 16 });
-    REQUIRE(record.size() == engine.getRoundCount());
+    REQUIRE(finalScores(*engine) == std::vector<int>{ 39, 56, 10, 16 });
+    REQUIRE(record.size() == engine->getRoundCount());
 
     // clang-format off
     const RoundRecord expected{
@@ -101,20 +100,20 @@ TEST_CASE("Golden game: 4 players, S_181, with full round record", "[golden]")
 
 TEST_CASE("Golden game: 4 players, S_818", "[golden]")
 {
-    GameEngine engine = playFullGame(GameStructure::S_818, buildRoundRobinProviders(4), kGoldenSeed);
-    REQUIRE(finalScores(engine) == std::vector<int>{ -6, 48, 20, -25 });
+    const auto engine = playFullGame(GameStructure::S_818, buildRoundRobinProviders(4), kGoldenSeed);
+    REQUIRE(finalScores(*engine) == std::vector<int>{ -6, 48, 20, -25 });
 }
 
 TEST_CASE("Golden game: 6 players, S_181", "[golden]")
 {
-    GameEngine engine = playFullGame(GameStructure::S_181, buildRoundRobinProviders(6), kGoldenSeed);
-    REQUIRE(finalScores(engine) == std::vector<int>{ -8, 78, 55, 82, 75, 114 });
+    const auto engine = playFullGame(GameStructure::S_181, buildRoundRobinProviders(6), kGoldenSeed);
+    REQUIRE(finalScores(*engine) == std::vector<int>{ -8, 78, 55, 82, 75, 114 });
 }
 
 TEST_CASE("Golden game: 6 players, S_818", "[golden]")
 {
-    GameEngine engine = playFullGame(GameStructure::S_818, buildRoundRobinProviders(6), kGoldenSeed);
-    REQUIRE(finalScores(engine) == std::vector<int>{ 47, 72, 46, 51, 119, 58 });
+    const auto engine = playFullGame(GameStructure::S_818, buildRoundRobinProviders(6), kGoldenSeed);
+    REQUIRE(finalScores(*engine) == std::vector<int>{ 47, 72, 46, 51, 119, 58 });
 }
 
 TEST_CASE("Golden game: 4 players, S_181, endWithForeheadAndHidden + all1GamesAreForehead", "[golden]")
@@ -124,17 +123,16 @@ TEST_CASE("Golden game: 4 players, S_181, endWithForeheadAndHidden + all1GamesAr
     // and count in isolation, but not that scores/bids/tricks still add up,
     // and not the opener rotation continuing correctly across the boundary
     // into the two appended rounds.
-    RoundRecord record;
+    RoundRecorder recorder;
 
-    GameHooks hooks;
-    hooks.onRoundScored = recordRoundsInto(record);
+    const auto engine = playFullGame(GameStructure::S_181, buildRoundRobinProviders(4), kGoldenSeed,
+                                     { &recorder },
+                                     /*endWithForeheadAndHidden=*/true, /*all1GamesAreForehead=*/true);
+    const RoundRecord& record = recorder.record;
 
-    GameEngine engine = playFullGame(GameStructure::S_181, buildRoundRobinProviders(4), kGoldenSeed,
-                                     hooks, /*endWithForeheadAndHidden=*/true, /*all1GamesAreForehead=*/true);
-
-    REQUIRE(engine.getRoundCount() == 3 * 4 + 12 + 2);
-    REQUIRE(record.size() == engine.getRoundCount());
-    REQUIRE(finalScores(engine) == std::vector<int>{ 49, 66, 14, 20 });
+    REQUIRE(engine->getRoundCount() == 3 * 4 + 12 + 2);
+    REQUIRE(record.size() == engine->getRoundCount());
+    REQUIRE(finalScores(*engine) == std::vector<int>{ 49, 66, 14, 20 });
 
     // clang-format off
     const RoundRecord expected{

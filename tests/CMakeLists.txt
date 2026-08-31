@@ -8,9 +8,12 @@ FetchContent_MakeAvailable(Catch2)
 
 add_executable(romanian_whist_engine_tests
     GameHarness.cpp
+    CancellationTests.cpp
+    MoveValidationTests.cpp
     CardValidatorTests.cpp
     DeckTests.cpp
     GameEngineTests.cpp
+    ObserverTests.cpp
     ScoreboardTests.cpp
     TrickTests.cpp
     GoldenGameTests.cpp

@@ -241,7 +241,7 @@ TEST_CASE("Scoreboard opening seat advances by one seat per round", "[scoreboard
     const unsigned int roundCount = scoreboard.getRoundCount();
     for(unsigned int i = 0 ; i < roundCount ; i++)
     {
-        REQUIRE(scoreboard.getCurrentRound().getOpenerSeat() == Seat{expectedSeat});
+        REQUIRE(scoreboard.getCurrentRound().getRoundLeaderSeat() == Seat{expectedSeat});
         expectedSeat = (expectedSeat + 1) % n;
         if(i + 1 < roundCount)
             scoreboard.incrementCurrentRound();
@@ -327,19 +327,24 @@ TEST_CASE("Round::addTrick stops at the trick count", "[round]")
     REQUIRE(round.getTricksWon(Seat{2}) == 0);
 }
 
-TEST_CASE("Round rejects a leader that is not at the table", "[round]")
+TEST_CASE("Round rejects a trick leader that is not at the table", "[round]")
 {
     Round round(1, Seat{0}, 3);
 
     // Stored unchecked, this would only surface once the turn order it drives
     // reached a seat that does not exist.
-    REQUIRE_THROWS_AS(round.setLeaderSeat(Seat{3}), std::out_of_range);
-    REQUIRE(round.getLeaderSeat() == Seat{0});
+    REQUIRE_THROWS_AS(round.setTrickLeaderSeat(Seat{3}), std::out_of_range);
+    REQUIRE(round.getTrickLeaderSeat() == Seat{0});
 
-    round.setLeaderSeat(Seat{2});
-    REQUIRE(round.getLeaderSeat() == Seat{2});
+    round.setTrickLeaderSeat(Seat{2});
+    REQUIRE(round.getTrickLeaderSeat() == Seat{2});
 
-    // The opener seeds the leader, so it is the same mistake one step earlier.
+    // The round leader is fixed, and the trick leader moves off it - so this
+    // one stays put while the other one walks.
+    REQUIRE(round.getRoundLeaderSeat() == Seat{0});
+
+    // The round leader seeds the trick leader, so it is the same mistake one
+    // step earlier.
     REQUIRE_THROWS_AS(Round(1, Seat{3}, 3), std::out_of_range);
 }
 
