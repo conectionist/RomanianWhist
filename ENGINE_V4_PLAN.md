@@ -1586,9 +1586,19 @@ have quietly stayed reachable.
 
 #### What review found after the phase landed
 
-Four fixes on top of the above, all with the golden scores still unmoved. The first three are the
-same shape: the phase wrote three contracts down in prose and enforced two and a half of them.
-61 tests now, and each fix was confirmed to fail its new test before it was applied.
+Five rounds of review on top of the above, all with the golden scores still unmoved and the
+`GoldenGameTests.cpp` values byte-untouched throughout. **72 tests now, up from 57**, and every
+behavioural fix was confirmed to fail its new test before it was applied.
+
+Almost all of it is one mistake made repeatedly: **the phase wrote contracts down in prose and
+enforced about half of them.** Worth carrying into Phase 3 as a checklist item rather than a
+lesson — every "must not", "only", and "fires once" in a header is a guard that does not exist
+until something rejects it.
+
+The other recurring shape is **state that has to move together and did not**: the round index and
+the trick number, the status and the stop flag.
+
+##### Round one: the stop and status contracts
 
 - **`Stopped` and `Finished` were not actually terminal.** `setStatus()` accepted any transition,
   so re-entering `InProgress` on a finished game and calling `run()` re-dealt the round the
@@ -1611,6 +1621,88 @@ same shape: the phase wrote three contracts down in prose and enforced two and a
 - **`tests/ScriptedMoveProvider.h` used `std::find` without including `<algorithm>`.** It compiled
   only because Catch2 happens to be included first in every current TU; a TU that includes the
   header first failed (verified, then verified fixed).
+
+##### Round two: contracts that refused nothing
+
+- **The observer list could be changed from inside a callback, corrupting the dispatch it was
+  called from.** The `notify*` helpers walk `observers` with a range-for whose end iterator is
+  fixed before the first callback runs, so an observer removing itself shifted the tail down
+  underneath it: with the remover registered first of three, the second was skipped entirely and
+  the third called twice — the second time through the slot the erase left behind, past the
+  vector's own size. `GameEngine.h` had forbidden this since the API was added, and unlike every
+  other misuse the engine guards, it failed in silence. A `DispatchGuard` raises a flag for the
+  length of each dispatch and `addObserver()`/`removeObserver()` throw while it is up.
+- **`onGameStarted()` could fire on an engine that was not set up.** `setStatus()` announced the
+  start without requiring the schedule, so a client that set `InProgress` before
+  `initializeScoreboard()` got the callback `IGameObserver.h` promises answers every round-scoped
+  accessor — and every one of them threw back out of `setStatus()` instead. Starting now requires
+  `isSetUp()`, which also freezes the table at the moment the game starts.
+- **A test that tested nothing, caught by trying to break it.** The observer-removal case had the
+  remover in the *middle* of three, where the skip and the double-dispatch cancel out and the
+  counts come back correct either way. Moved to first, it reproduces 0 and 2 exactly. Worth
+  repeating as a technique: disable the fix and confirm the new test actually fails.
+
+##### Round three: guards that were half-applied
+
+- **`setStatus()` could reach either terminal state without telling a single observer.** Both
+  endings belong to the engine and both carry a notification at the moment they happen, but
+  `setStatus()` wrote the status alone — and round two's terminal guard then made that
+  unrecoverable. A client wiring a quit button to the newly public `GameStatus::Stopped` stranded
+  every renderer on a game that had silently ended. Both terminal targets are now rejected;
+  `requestStop()` is the path that ends a game and notifies.
+- **`DispatchGuard` cleared the flag on the way out instead of restoring it, so dispatches did not
+  nest** — the inner guard's destructor disarmed the outer walk for the rest of its iteration, and
+  the `removeObserver()` the guard exists to reject was then accepted mid-walk. Exactly the
+  corruption round two added the guard to stop, silent again.
+- **`Round::addCardToCurrentTrick` checked the trick's size against the seat count but never that
+  the seat had already played**, so its own "one card per seat" comment was half enforced. Two
+  cards from one seat on a two-seat table is a full trick by count. Not reachable through
+  `playTrick()`, which walks the seats once — a guard-completeness gap rather than a live defect.
+
+##### Round four: boundaries the stop flag did not have
+
+- **`playRound()` never read the stop flag.** The check lived only in `run()`'s loop, but
+  `playRound()` is a documented entry point in its own right, so a client using it dealt and bid an
+  entire extra round after `requestStop()` — with a human provider, prompts for a hand thrown away
+  a moment later. The check moved to the top of `playRound()`, which leaves `run()`'s behaviour
+  identical while making both entry points honour a stop at the same boundaries.
+- **`completeCurrentRound()` advanced the round index and left the trick number behind**, so at
+  `onRoundComplete()` the engine reported a trick the round it now named had not played — and,
+  since the schedule's rounds differ in length, a number that round could not reach: "trick 8" over
+  a one-trick round.
+
+##### Round five: re-entrancy, and the last boundary
+
+- **`run()` and `playRound()` had no re-entrancy guard.** An observer or move provider that drove
+  the game from inside a callback re-entered `playRound()` on an engine halfway through a round:
+  `dealRound()` cleared the hands the outer trick loop was still playing from. From `onCardPlayed()`
+  a nested `run()` played the whole remaining schedule and fired `onGameOver()`, then returned into
+  an outer trick loop on a finished game. A `DrivingGuard` keyed on "a round is in flight" rather
+  than on `dispatching`, because the engine calls move providers *outside* any dispatch — an
+  observer-only guard would have missed the other way in.
+- **Bidding never read the stop flag either**, so a stop raised in `onRoundStarted()` or an early
+  seat's bid callbacks still walked the rest of the table. Same harm as round four's, one step
+  later.
+- **`IGameObserver`'s `onRoundScored` told clients to read `getRoundScore()` and `getTotalScore()`.
+  Neither exists** — they are Phase 3 API that reached a Phase 2 header from §3.3 of this document.
+  A client following the header would not have compiled. Now names `getPlayerRoundScores()` and
+  `getPlayerScores()`.
+
+##### Round six: two comments that were still wrong
+
+Contract text only, but this is a header two clients are meant to reason from, and both claims
+were the kind a reader would act on.
+
+- **`GamePhase` claimed `RoundScored` spans both `onRoundScored` and `onRoundComplete`.**
+  `completeCurrentRound()` moves the *final* round to `GameOver` before `notifyRoundComplete()`
+  fires, so an observer gating a round summary on `getPhase() == RoundScored` there silently skips
+  the last round.
+- **`onGameStopped` explained a late stop by saying both final-round callbacks "run after the game
+  has reached Finished".** They do not: inside `onRoundScored()` the status is still `InProgress`,
+  which a probe confirmed. The behaviour is right and the reason was wrong — what makes a late stop
+  a no-op is that *nothing reads the flag again*, not that the game has already ended. The test now
+  asserts the status at the moment the stop is asked for, so the corrected explanation is pinned
+  rather than merely written down.
 
 ---
 
