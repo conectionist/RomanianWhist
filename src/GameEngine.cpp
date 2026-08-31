@@ -288,10 +288,12 @@ void GameEngine::playRound()
     // caught by the check at the top of the next playRound() - the round it was
     // raised in is already scored and committed either way. On the last round
     // there is no next deal, completeCurrentRound() has already moved the game
-    // to Finished, and a stop raised after that is a no-op: it names no round
-    // to abandon. The game finished before the stop was asked for, so
-    // onGameOver() is what fires and stopRequested stays raised with nothing
-    // left to answer it.
+    // to Finished by the time this line runs, so a stop raised in either of
+    // those two callbacks is a no-op: it names no round to abandon and nothing
+    // will read the flag again. Note the game was still InProgress inside
+    // onRoundScored() - what settles it is the missing read, not the status at
+    // the moment the stop was asked for. onGameOver() is what fires, and
+    // stopRequested stays raised with nothing left to answer it.
     if(status == GameStatus::Finished)
         notifyGameOver();
 }

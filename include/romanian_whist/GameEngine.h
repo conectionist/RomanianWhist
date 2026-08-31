@@ -270,8 +270,9 @@ public:
     // onRoundScored() or onRoundComplete() on the final round, or any time
     // after the game reaches Finished - is a no-op: there is no round left to
     // abandon and no boundary left to land on, so the game stays Finished and
-    // onGameOver(), not onGameStopped(), is what fired. Finished and Stopped
-    // are both terminal and the game reached one of them first.
+    // onGameOver(), not onGameStopped(), is what fired. Note the game need not
+    // have reached Finished at the moment such a stop is asked for - from
+    // onRoundScored() it has not - only before anything reads the flag again.
     //
     // It cannot interrupt a move provider already parked waiting for a human:
     // the flag is only read between bids, tricks and rounds. Unparking that

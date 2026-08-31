@@ -110,10 +110,13 @@ public:
     // bid, so the rest of the table is never prompted for a hand that is being
     // abandoned; getPhase() is Betting there, and the round has no tricks.
     //
-    // A stop asked for once the last round is already scored has no boundary
-    // left to land on, so it does not fire this: onRoundScored() and
-    // onRoundComplete() on the final round both run after the game has reached
-    // Finished, and the game that got there first is the one that reports.
+    // A stop asked for once the last round is being scored has no boundary left
+    // to land on, so it does not fire this. The flag's last read is before that
+    // round is scored: from onRoundScored() the game is still InProgress, but
+    // nothing reads the flag again, and by the time anything could the round is
+    // committed and the game has moved to Finished. From onRoundComplete() on
+    // the final round it is Finished already. Either way the game ended on its
+    // own terms before the stop could be honoured, so onGameOver() reports it.
     virtual void onGameStopped(const GameEngine&) {}
 };
 

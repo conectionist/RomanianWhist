@@ -248,9 +248,11 @@ TEST_CASE("A stop requested after the last round has been scored is a no-op", "[
 {
     // The boundary the flag is read at is the one before a round's work, and
     // after the final round's scoring there is none left. On any earlier round
-    // run() catches this stop before the next deal; on the last one the game is
-    // already Finished by the time the callback runs, so the stop names no
-    // round to abandon and Finished stands.
+    // the next playRound() catches this stop before the next deal; on the last
+    // one there is no next deal. The status assertions below are the point: the
+    // game is NOT yet Finished inside onRoundScored(), so what makes the stop a
+    // no-op is the missing read rather than a status that has already gone
+    // terminal. By onRoundComplete() it has.
     struct LateStopper : IGameObserver
     {
         GameEngine* engine = nullptr;
@@ -260,6 +262,11 @@ TEST_CASE("A stop requested after the last round has been scored is a no-op", "[
         unsigned int gameStopped = 0;
         unsigned int roundsScored = 0;
 
+        // What the status actually was when the stop was asked for. The two
+        // differ, and the difference is the whole reason this is a no-op for a
+        // reason other than "the game had already ended".
+        std::optional<GameStatus> statusWhenStopRequested;
+
         void onGameOver(const GameEngine&) override { gameOver++; }
         void onGameStopped(const GameEngine&) override { gameStopped++; }
 
@@ -268,26 +275,42 @@ TEST_CASE("A stop requested after the last round has been scored is a no-op", "[
             roundsScored++;
 
             if(stopOnScored && e.getCurrentRoundIndex() + 1 == e.getRoundCount())
+            {
+                statusWhenStopRequested = e.getStatus();
                 engine->requestStop();
+            }
         }
 
         void onRoundComplete(const GameEngine& e) override
         {
             if(!stopOnScored && e.getStatus() == GameStatus::Finished)
+            {
+                statusWhenStopRequested = e.getStatus();
                 engine->requestStop();
+            }
         }
     };
 
     LateStopper stopper;
+    GameStatus expectedStatusAtStop = GameStatus::InProgress;
 
     SECTION("from onRoundScored on the final round")
     {
         stopper.stopOnScored = true;
+
+        // Still InProgress here: the round has been scored but not committed,
+        // and completeCurrentRound() has not run. So this stop is NOT ignored
+        // because the game had already ended - it is ignored because the last
+        // read of the flag is already behind it.
+        expectedStatusAtStop = GameStatus::InProgress;
     }
 
     SECTION("from onRoundComplete on the final round")
     {
         stopper.stopOnScored = false;
+
+        // By here completeCurrentRound() has run and the game is Finished.
+        expectedStatusAtStop = GameStatus::Finished;
     }
 
     const auto engine = buildGame(GameStructure::S_181);
@@ -303,6 +326,9 @@ TEST_CASE("A stop requested after the last round has been scored is a no-op", "[
     REQUIRE(engine->getStatus() == GameStatus::Finished);
     REQUIRE(stopper.gameOver == 1);
     REQUIRE(stopper.gameStopped == 0);
+
+    // The stop really was asked for, and from the status the section expects.
+    REQUIRE(stopper.statusWhenStopRequested == expectedStatusAtStop);
 
     // The whole schedule played, including the round the stop was raised in -
     // which is the same treatment an earlier round gets, since a stop raised
