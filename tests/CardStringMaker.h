@@ -3,6 +3,16 @@
 
 #include <romanian_whist/Card.h>
 
+// Half the by-value Card assertions in the suite are on an optional: trump,
+// getWinningCard(), and everything TrickHeuristics returns. Catch2 prints those
+// as "{?}" - even with the Card specialization below in scope - unless
+// CATCH_CONFIG_ENABLE_OPTIONAL_STRINGMAKER is defined, so a failure reads
+// "{?} == QS" and names only the half that was already right.
+//
+// It is set on the test target rather than here: the macro has to be seen
+// before catch_tostring.hpp, and a test file that includes catch_test_macros.hpp
+// first - as most of them do - has already pulled that in by the time it reaches
+// this header. A compile definition cannot be defeated by include order.
 #include <catch2/catch_tostring.hpp>
 
 #include <string>

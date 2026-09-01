@@ -2182,9 +2182,10 @@ Each cost a pass over the source to find, and none is visible from the decision 
 
 #### What it came to
 
-All four verification gates passed: `ctest` green on both presets (**70 → 76 tests**), `-Wall
--Wextra` clean in both repos, golden scores byte-identical, and all four rendered transcripts
-byte-identical at 15,668 lines each.
+All four verification gates passed: `ctest` green on both presets (**70 → 80 tests**, counting the
+review follow-ups below), `-Wall -Wextra` clean in both repos, golden scores byte-identical, and all
+four rendered transcripts byte-identical at 15,668 lines each — re-checked after the review fixes,
+since those touched engine code.
 
 - **The bug was reproduced before it was fixed, and the reproduction is worth reading.** Round 0 of
   a 4-player S_818 game was played as `{9C, QC, 10C, 7C}, {AD, 9D, JD, 10D}` — clean, suit-following
@@ -2199,13 +2200,39 @@ byte-identical at 15,668 lines each.
   touched** (an unused `startedGame` helper). Left alone deliberately: it is pre-existing and fixing
   it here would put an unrelated change in a diff whose whole claim is that nothing behavioural
   moved.
-- **The new positional-erase test was checked against a mutation**, per Phase 0's precedent: making
-  `Player::playCard` erase `*choice - 1` instead of `*choice` fails it, and fails nothing else in
-  the suite. Without that check an off-by-one would play a different card than the provider chose
-  and still look legal from every other angle.
-- **`Card` gained a Catch2 `StringMaker`, in `GameHarness.h`.** With cards compared by value
-  everywhere, a mismatch otherwise prints as `{ {?}, {?} }` — which says two hands differ but not
-  how, on precisely the assertions this phase adds most of.
+- **The positional-erase test was mutation-checked, passed, and was still inadequate — read this
+  one before writing the next mutation check.** As first written it compared the engine's *reported*
+  card against the hand snapshot. `Player::playCard` reads the card it reports and erases the card
+  it removes at the same index, so a **consistent** off-by-one moves both together and every
+  assertion in the test still holds. The mutant that "proved" the test worked shifted only the
+  erase — an inconsistent bug, and a strictly easier one, which the move validator catches on its
+  own the moment it plays an illegal card. A fair mutant (shift both, only when leading, where every
+  card is legal and the validator has nothing to say) passes the original test clean while playing
+  the wrong card on every lead.
+
+  This is the same trap §0e records finding in the property suite — deriving "expected" from the
+  very thing under test — reached by a different route, and the mutation check did not stop it
+  because the mutant was chosen to fail. **A mutation check proves your test catches *that* mutant
+  and nothing else; pick the bug you would actually ship.** The fix is to record what the provider
+  *meant* to play (`ScriptedMoveProvider::lastIntendedCard`) and assert the engine played it — the
+  only assertion that ties a provider's choice to the engine's action rather than to the engine's
+  own report of it.
+- **`Card` gained a Catch2 `StringMaker`, in `tests/CardStringMaker.h`** — its own header, not
+  `GameHarness.h`, because `CardValidatorTests`, `TrickTests` and `ScoreboardTests` carry the
+  heaviest by-value assertions and none of them uses the harness. It also has to be visible in
+  *every* TU that compares `Card`s: specialising it in one while another instantiates the primary
+  template is ill-formed, no diagnostic required. The test target additionally defines
+  `CATCH_CONFIG_ENABLE_OPTIONAL_STRINGMAKER`, since half these comparisons are on an
+  `std::optional<Card>` — trump, `getWinningCard()`, everything `TrickHeuristics` returns — which
+  Catch2 renders `{?}` regardless of what specializations are in scope. It is a compile definition
+  rather than a `#define` in the header because it must precede `catch_tostring.hpp`, which
+  `catch_test_macros.hpp` already pulls in.
+- **The tie-break invariant is pinned by tests now, not just by comments.** `TrickHeuristicsTests`
+  asserts that `mostDangerous`/`leastDangerous` return the *first* of a run of equivalents, and that
+  `safeCards` preserves input order through `chooseDuckingCard`. Both were verified against fair
+  mutants: a hand-rolled rewrite keeping the last of a run, and a reversed `safeCards`. The first
+  moves five of the seven golden games, which is the point — the goldens *do* catch a reordering,
+  but only as "scores moved somewhere", and this says which function and which card.
 - **The human path needed its own check and nearly did not get one.** The four transcripts cover the
   demo, where no `ConsoleMoveProvider` prompt is ever drawn — so they prove nothing about
   `layOutHand`, the one function the client rewrote. A scripted full game through the human seat

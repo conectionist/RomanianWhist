@@ -19,6 +19,7 @@ add_executable(romanian_whist_engine_tests
     GoldenGameTests.cpp
     RandomPlayPropertyTests.cpp
     RoundHistoryTests.cpp
+    TrickHeuristicsTests.cpp
 )
 
 target_link_libraries(romanian_whist_engine_tests PRIVATE
@@ -31,6 +32,15 @@ target_include_directories(romanian_whist_engine_tests PRIVATE
 )
 
 target_compile_features(romanian_whist_engine_tests PRIVATE cxx_std_20)
+
+# Cards are compared by value, and half of those comparisons are on an optional
+# (trump, getWinningCard(), everything TrickHeuristics returns). Without this
+# Catch2 renders them "{?}" whatever StringMaker specializations are in scope.
+# Set here rather than in a header because it must be seen before Catch2's
+# catch_tostring.hpp, which catch_test_macros.hpp already includes.
+target_compile_definitions(romanian_whist_engine_tests PRIVATE
+    CATCH_CONFIG_ENABLE_OPTIONAL_STRINGMAKER
+)
 
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 include(Catch)
