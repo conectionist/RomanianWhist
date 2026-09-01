@@ -180,3 +180,13 @@ TEST_CASE("CardValidator::getWinningCard", "[card-validator]")
         REQUIRE(CardValidator::getWinningCard(played, Suit::Hearts, nullptr) == &heartsKing);
     }
 }
+
+TEST_CASE("Card equality is rank and suit", "[card]")
+{
+    // Cards are held by value from here on, so equality is what a hand, a trick
+    // and a round use to answer "is this the card that was played?". A deck
+    // holds no duplicates, which is what makes this identity too.
+    REQUIRE(Card(Rank::Queen, Suit::Spades) == Card(Rank::Queen, Suit::Spades));
+    REQUIRE_FALSE(Card(Rank::Queen, Suit::Spades) == Card(Rank::Queen, Suit::Hearts));
+    REQUIRE_FALSE(Card(Rank::Queen, Suit::Spades) == Card(Rank::King, Suit::Spades));
+}
