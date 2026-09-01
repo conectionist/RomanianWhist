@@ -132,10 +132,19 @@ TEST_CASE("Playing a card removes exactly that card, and nothing else moves", "[
     // POSITION, so an off-by-one would quietly play a different card than the
     // one the provider chose. Nothing else in the suite would notice - the card
     // erased would still be a legal card from a legal hand.
+    //
+    // Which is why the provider's INTENT is checked here as well as the hand.
+    // Comparing the played card against the hand snapshot alone cannot catch
+    // the bug this test is named for: Player::playCard reads the card it
+    // reports and erases the card it removes at the same index, so a consistent
+    // off-by-one plays a different card than was chosen while every hand-shape
+    // assertion below still holds. lastIntendedCard is the only record of what
+    // the provider actually meant, taken before the index crossed the boundary.
     struct HandWatcher : IGameObserver
     {
         std::vector<Card> before;
         Seat watched{0};
+        const std::vector<ScriptedMoveProvider*>* providers = nullptr;
 
         void onCardRequested(const GameEngine& engine, Seat seat) override
         {
@@ -146,6 +155,13 @@ TEST_CASE("Playing a card removes exactly that card, and nothing else moves", "[
         void onCardPlayed(const GameEngine& engine, Seat seat, const Card& card) override
         {
             REQUIRE(seat == watched);
+
+            // What the provider chose, resolved by the engine, is what got
+            // played - not merely something the hand could account for.
+            const ScriptedMoveProvider& provider = *providers->at(seat.index);
+
+            REQUIRE(provider.lastIntendedCard.has_value());
+            REQUIRE(card == *provider.lastIntendedCard);
 
             const std::vector<Card>& after = engine.getPlayers().at(seat.index).getHand();
 
@@ -166,6 +182,7 @@ TEST_CASE("Playing a card removes exactly that card, and nothing else moves", "[
     };
 
     HandWatcher watcher;
+    watcher.providers = &seats;
     engine->addObserver(&watcher);
 
     REQUIRE_NOTHROW(engine->run());

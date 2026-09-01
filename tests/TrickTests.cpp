@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "CardStringMaker.h"
+
 #include <romanian_whist/Round.h>
 #include <romanian_whist/Trick.h>
 

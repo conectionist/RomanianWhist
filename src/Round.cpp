@@ -16,6 +16,13 @@ Round::Round(unsigned int _trickCount,
 {
     if(_roundLeader.index >= seatCount)
         throw std::out_of_range("Round::Round: round leader seat out of range");
+
+    // getTrick() hands out a reference into this vector, and addTrick() grows it
+    // by push_back all round long - so without this, a reference taken during a
+    // round dangles the moment the next trick is filed. A round is dealt for
+    // exactly trickCount tricks and addTrick() refuses past that, so reserving
+    // that many here means the storage never moves again.
+    tricks.reserve(trickCount);
 }
 
 void Round::addTrick(const Trick &trick)

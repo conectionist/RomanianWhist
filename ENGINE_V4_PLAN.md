@@ -2182,7 +2182,7 @@ Each cost a pass over the source to find, and none is visible from the decision 
 
 #### What it came to
 
-All four verification gates passed: `ctest` green on both presets (**70 → 74 tests**), `-Wall
+All four verification gates passed: `ctest` green on both presets (**70 → 76 tests**), `-Wall
 -Wextra` clean in both repos, golden scores byte-identical, and all four rendered transcripts
 byte-identical at 15,668 lines each.
 

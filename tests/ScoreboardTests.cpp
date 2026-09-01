@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "CardStringMaker.h"
+
 #include <romanian_whist/AiMoveProvider.h>
 #include <romanian_whist/PlayerList.h>
 #include <romanian_whist/RoundType.h>

@@ -54,6 +54,19 @@ public:
     // range check rather than a membership search.
     bool playOutOfRangeIndex = false;
 
+    // The card this provider MEANT to play, recorded at the moment it picked
+    // one. The index boundary means the provider names a position and the
+    // engine resolves it, so nothing else in the suite can tell the difference
+    // between "the engine played what was chosen" and "the engine played
+    // something consistent with what it reported" - Player::playCard reads and
+    // erases at the same index, so an off-by-one moves both together. This is
+    // the intent that reading is measured against; see the positional-erase
+    // test in MoveValidationTests.cpp.
+    //
+    // Left empty on a pass (no legal card), and on the two sabotage paths,
+    // where the engine is expected to throw before anything is played.
+    std::optional<Card> lastIntendedCard;
+
     unsigned int makeBet(const BetContext& context) override
     {
         if(forcedIllegalBid)
@@ -71,6 +84,8 @@ public:
 
     std::optional<std::size_t> playCard(const PlayContext& context) override
     {
+        lastIntendedCard.reset();
+
         if(playOutOfRangeIndex)
             return context.hand.size();
 
@@ -102,6 +117,8 @@ public:
         // one.
         const Card& picked = legal[choice < legal.size() ? choice : 0];
         const auto it = std::find(context.hand.begin(), context.hand.end(), picked);
+
+        lastIntendedCard = picked;
 
         return static_cast<std::size_t>(std::distance(context.hand.begin(), it));
     }
