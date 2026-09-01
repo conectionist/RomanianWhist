@@ -78,6 +78,15 @@ public:
 
     std::size_t getPlayedTrickCount() const;
 
+    // A completed trick, with its winner set; index 0 is the round's first.
+    // Throws std::out_of_range at or past getPlayedTrickCount() - the trick in
+    // flight is getCurrentTrick(), and it is not one of these until
+    // finishCurrentTrick() files it.
+    //
+    // Counting the tricks was enough while nothing read them back. Rendering a
+    // finished round means reading the cards too.
+    const Trick& getTrick(std::size_t index) const;
+
     // The trick in flight. Empty between the deal and the first card of trick
     // one; from then on it holds whatever has been played so far - and, once
     // finishCurrentTrick() has run, the completed trick, until the next

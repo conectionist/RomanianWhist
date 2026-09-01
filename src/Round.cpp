@@ -1,6 +1,7 @@
 #include <romanian_whist/Round.h>
 
 #include <stdexcept>
+#include <string>
 
 namespace romanian_whist
 {
@@ -151,6 +152,15 @@ RoundType Round::getRoundType() const
 std::size_t Round::getPlayedTrickCount() const
 {
     return tricks.size();
+}
+
+const Trick &Round::getTrick(std::size_t index) const
+{
+    if(index >= tricks.size())
+        throw std::out_of_range("Round::getTrick: trick " + std::to_string(index)
+                                + " of a round holding " + std::to_string(tricks.size()));
+
+    return tricks[index];
 }
 
 std::optional<unsigned int> Round::getBet(Seat seat) const

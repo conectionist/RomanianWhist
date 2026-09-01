@@ -105,6 +105,11 @@ const Round &Scoreboard::getCurrentRound() const
     return rounds[currentRound];
 }
 
+const Round &Scoreboard::getRound(unsigned int index) const
+{
+    return rounds[index];
+}
+
 unsigned int Scoreboard::getRoundCount() const
 {
     return rounds.size();

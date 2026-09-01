@@ -18,6 +18,7 @@ add_executable(romanian_whist_engine_tests
     TrickTests.cpp
     GoldenGameTests.cpp
     RandomPlayPropertyTests.cpp
+    RoundHistoryTests.cpp
 )
 
 target_link_libraries(romanian_whist_engine_tests PRIVATE

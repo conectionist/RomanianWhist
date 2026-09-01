@@ -364,6 +364,13 @@ public:
     const PlayerList& getPlayers() const;
     const Round& getCurrentRound() const;
 
+    // Any round in the schedule, played or not - this is how a client renders
+    // "the previous round". start() lays the schedule out in full, so an index
+    // past getCurrentRoundIndex() names a round that exists but has not been
+    // played: no bets, no tricks, no trump. Throws std::out_of_range past the
+    // end of the schedule, and std::logic_error before the game has started.
+    const Round& getRound(unsigned int index) const;
+
     // Read-only access to the deck, for inspecting composition and shuffle
     // order (tests) without a test-only friend declaration.
     const Deck& getDeck() const;

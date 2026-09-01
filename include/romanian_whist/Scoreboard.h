@@ -31,6 +31,13 @@ public:
     void incrementCurrentRound();
     Round& getCurrentRound();
     const Round& getCurrentRound() const;
+
+    // Any round in the schedule. initialize() lays the whole schedule out up
+    // front, so a round past getCurrentRoundIndex() exists but has not been
+    // played yet - no bets, no tricks, no trump. Unguarded, like
+    // getCurrentRound(): GameEngine::getRound() is the checked way in.
+    const Round& getRound(unsigned int index) const;
+
     unsigned int getRoundCount() const;
     unsigned int getCurrentRoundIndex() const;
     
