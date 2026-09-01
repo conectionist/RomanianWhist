@@ -337,38 +337,42 @@ void GameEngine::playTrick()
         notifyCardRequested(seat);
 
         Player& player = players.at(seat.index);
-        Card* trump = getCurrentTrumpCard();
+        const std::optional<Card> trump = getCurrentTrumpCard();
 
         const Trick& trick = round.getCurrentTrick();
-        const Suit* leadSuit = trick.hasLeadSuit() ? &trick.getLeadSuit() : nullptr;
+        const std::optional<Suit> leadSuit =
+            trick.hasLeadSuit() ? std::optional<Suit>(trick.getLeadSuit()) : std::nullopt;
 
         // Worked out before the provider is asked, because Player::playCard
         // erases the chosen card from the hand as part of the same call - after
         // it returns there is no longer a hand to judge the choice against.
-        const std::vector<Card*> legalCards = validator.getLegalCards(player.getHand(), trump, leadSuit);
+        // A copy of the cards, so it stays meaningful across that erase.
+        const std::vector<Card> legalCards = validator.getLegalCards(player.getHand(), trump, leadSuit);
 
         // The trick so far, plus what this player owes on their bid, so a
         // strategy can tell whether a card would actually win and whether it
         // wants it to.
-        Card* playedCard = player.playCard(trump,
-                                           leadSuit,
-                                           trick.cardsInPlayOrder(),
-                                           round.getBet(seat).value_or(0),
-                                           round.getTricksWon(seat));
+        const std::optional<Card> playedCard = player.playCard(trump,
+                                                               leadSuit,
+                                                               trick.cardsInPlayOrder(),
+                                                               round.getBet(seat).value_or(0),
+                                                               round.getTricksWon(seat));
 
-        // Contractually possible: a move provider returns null when it has no
+        // Contractually possible: a move provider returns empty when it has no
         // legal play. It should not be reachable, since a player holding cards
         // always has at least one legal one - so say so loudly rather than
-        // dereferencing null or playing on regardless.
-        if(playedCard == nullptr)
+        // playing on regardless.
+        if(!playedCard)
             throw std::runtime_error(player.getName() + " had no legal card to play.");
 
-        // Covers both halves of a bad move: a card the player does not hold is
-        // not in the legal set either.
-        if(std::find(legalCards.begin(), legalCards.end(), playedCard) == legalCards.end())
+        // Only the follow-suit half is live now. The other half - a card the
+        // player does not hold - stopped being expressible when the provider
+        // boundary became an index: Player::playCard range-checks it and reads
+        // the card out of the hand, so whatever comes back was in there.
+        if(std::find(legalCards.begin(), legalCards.end(), *playedCard) == legalCards.end())
             throw std::logic_error(player.getName() + " played a card that is not legal in this trick");
 
-        round.addCardToCurrentTrick(seat, playedCard);
+        round.addCardToCurrentTrick(seat, *playedCard);
         notifyCardPlayed(seat, *playedCard);
 
         seat = getNextSeat(seat);
@@ -426,24 +430,17 @@ void GameEngine::dealCards()
         for(unsigned int j = 0 ; j < players.size() ; j++)
         {
             index = gameCount * j + i;
-            players[j].addCardToHand(&deck[index]);
+            players[j].addCardToHand(deck[index]);
         }
     }
 
     if(gameCount < 8)
     {
-        scoreboard.getCurrentRound().setTrumpCard(&deck[index + 1]);
+        scoreboard.getCurrentRound().setTrumpCard(deck[index + 1]);
     }
 }
 
-Card *GameEngine::getCurrentTrumpCard()
-{
-    requireStarted();
-
-    return scoreboard.getCurrentRound().getTrumpCard();
-}
-
-const Card *GameEngine::getCurrentTrumpCard() const
+std::optional<Card> GameEngine::getCurrentTrumpCard() const
 {
     requireStarted();
 
@@ -560,7 +557,7 @@ Seat GameEngine::determineTrickWinner(const Trick& trick) const
 
     for(std::size_t i = 1 ; i < playedCards.size() ; i++)
     {
-        if(cardBeats(*playedCards[i].card, *playedCards[bestIndex].card, trick.getLeadSuit()))
+        if(cardBeats(playedCards[i].card, playedCards[bestIndex].card, trick.getLeadSuit()))
             bestIndex = i;
     }
 

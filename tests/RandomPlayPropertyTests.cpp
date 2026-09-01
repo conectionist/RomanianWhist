@@ -7,6 +7,7 @@
 #include <romanian_whist/strategies/RandomCardStrategy.h>
 
 #include <algorithm>
+#include <optional>
 
 using namespace romanian_whist;
 using namespace romanian_whist::test;
@@ -28,24 +29,36 @@ constexpr std::uint32_t kPropertySeedCount = 2000;
 // (see MoveValidationTests). That does not make this redundant: the engine's
 // check goes through getLegalCards() too, so this is still the only assertion
 // in the suite that would survive that function being wrong.
-bool followsTheRules(const std::vector<Card*>& hand, const Card* trump, const Suit* leadSuit, const Card* playedCard)
+//
+// The membership check below is the exception, and it is worth being straight
+// about what it does and does not prove any more. It used to catch a provider
+// returning a card the player did not hold. It cannot fail that way now: the
+// provider boundary is an index, and Player::playCard range-checks it and reads
+// the card straight out of the hand, so whatever arrives here was in there by
+// construction. What it still catches is the engine erasing or reporting the
+// WRONG position - which is a new way to be wrong that the index introduced, so
+// the line stays.
+bool followsTheRules(const std::vector<Card>& hand,
+                     std::optional<Card> trump,
+                     std::optional<Suit> leadSuit,
+                     const Card& playedCard)
 {
     if(std::find(hand.begin(), hand.end(), playedCard) == hand.end())
         return false;
 
-    if(leadSuit == nullptr)
+    if(!leadSuit)
         return true;
 
     const auto holdsSuit = [&](Suit suit)
     {
-        return std::any_of(hand.begin(), hand.end(), [suit](Card* card) { return card->suit == suit; });
+        return std::any_of(hand.begin(), hand.end(), [suit](const Card& card) { return card.suit == suit; });
     };
 
     if(holdsSuit(*leadSuit))
-        return playedCard->suit == *leadSuit;
+        return playedCard.suit == *leadSuit;
 
     if(trump && holdsSuit(trump->suit))
-        return playedCard->suit == trump->suit;
+        return playedCard.suit == trump->suit;
 
     return true;
 }
@@ -97,8 +110,8 @@ public:
     {
         REQUIRE(followsTheRules(handBeforePlay,
                                 trumpBeforePlay,
-                                hasLeadSuit ? &leadSuit : nullptr,
-                                &card));
+                                hasLeadSuit ? std::optional<Suit>(leadSuit) : std::nullopt,
+                                card));
     }
 
     void onTrickWon(const GameEngine&, Seat winner, unsigned int) override
@@ -129,8 +142,8 @@ private:
     std::optional<unsigned int> forbiddenBet;
     unsigned int trickCount = 0;
 
-    std::vector<Card*> handBeforePlay;
-    const Card* trumpBeforePlay = nullptr;
+    std::vector<Card> handBeforePlay;
+    std::optional<Card> trumpBeforePlay;
     bool hasLeadSuit = false;
     Suit leadSuit{};
 };

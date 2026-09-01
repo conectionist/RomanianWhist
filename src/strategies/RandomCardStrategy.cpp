@@ -30,14 +30,14 @@ unsigned int RandomCardStrategy::getBestBet(const BetContext &context)
     return bet;
 }
 
-Card *RandomCardStrategy::getBestChoice(const PlayContext &context)
+std::optional<Card> RandomCardStrategy::getBestChoice(const PlayContext &context)
 {
-    std::vector<Card*> legalCards = cardValidator.getLegalCards(context.hand,
+    const std::vector<Card> legalCards = cardValidator.getLegalCards(context.hand,
                                                                 context.trump,
                                                                 context.leadSuit);
 
     if (legalCards.empty())
-        return nullptr;
+        return std::nullopt;
 
     return legalCards[detail::uniformIndex(generator, static_cast<unsigned int>(legalCards.size()))];
 }

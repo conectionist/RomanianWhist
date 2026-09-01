@@ -15,10 +15,10 @@ struct BetContext
 {
     // The bidder's hand. Its size is the round's trick count, so it doubles as
     // the upper bound on a legal bid.
-    const std::vector<Card*>& hand;
+    const std::vector<Card>& hand;
 
-    // Null in 8-card rounds, which have no trump.
-    Card* trump = nullptr;
+    // Empty in 8-card rounds, which have no trump.
+    std::optional<Card> trump;
 
     // True for whoever opens the bidding, who bids with nothing to go on.
     bool isFirstPlayer = false;

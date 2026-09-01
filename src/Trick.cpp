@@ -12,7 +12,7 @@ Trick::Trick() : leadSuit(Suit::Hearts),
                  winnerSet(false)
 {}
 
-void Trick::addPlayedCard(Seat seat, Card* card)
+void Trick::addPlayedCard(Seat seat, Card card)
 {
     playedCards.push_back({ seat, card });
 }
@@ -22,9 +22,9 @@ const std::vector<PlayedCard>& Trick::getPlayedCards() const
     return playedCards;
 }
 
-std::vector<Card*> Trick::cardsInPlayOrder() const
+std::vector<Card> Trick::cardsInPlayOrder() const
 {
-    std::vector<Card*> cards;
+    std::vector<Card> cards;
     cards.reserve(playedCards.size());
 
     for(const PlayedCard& played : playedCards)

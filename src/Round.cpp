@@ -9,7 +9,6 @@ Round::Round(unsigned int _trickCount,
              Seat _roundLeader,
              unsigned int seatCount,
              RoundType _type) : bets(seatCount),
-                                trump(nullptr),
                                 trickCount(_trickCount),
                                 type(_type),
                                 trickLeaderSeat(_roundLeader),
@@ -50,17 +49,12 @@ void Round::setBet(Seat seat, unsigned int guess)
     bets[seat.index] = guess;
 }
 
-void Round::setTrumpCard(Card *card)
+void Round::setTrumpCard(Card card)
 {
     trump = card;
 }
 
-Card *Round::getTrumpCard()
-{
-    return trump;
-}
-
-const Card *Round::getTrumpCard() const
+std::optional<Card> Round::getTrumpCard() const
 {
     return trump;
 }
@@ -98,11 +92,10 @@ void Round::resetCurrentTrick()
     currentTrick = Trick();
 }
 
-void Round::addCardToCurrentTrick(Seat seat, Card* card)
+void Round::addCardToCurrentTrick(Seat seat, Card card)
 {
-    if(card == nullptr)
-        throw std::logic_error("Round::addCardToCurrentTrick: card must not be null");
-
+    // A Card by value is always a card, so the null check this used to open
+    // with has nothing left to test.
     if(seat.index >= bets.size())
         throw std::out_of_range("Round::addCardToCurrentTrick: seat out of range");
 
@@ -122,7 +115,7 @@ void Round::addCardToCurrentTrick(Seat seat, Card* card)
     // rather than leaving it to the caller is the point of the round owning the
     // trick: there is no longer a way to add a card and forget.
     if(!currentTrick.hasLeadSuit())
-        currentTrick.setLeadSuit(card->suit);
+        currentTrick.setLeadSuit(card.suit);
 
     currentTrick.addPlayedCard(seat, card);
 }

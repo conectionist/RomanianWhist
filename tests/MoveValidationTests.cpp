@@ -5,7 +5,9 @@
 
 #include <romanian_whist/GameEngine.h>
 #include <romanian_whist/IGameObserver.h>
+#include <romanian_whist/Player.h>
 
+#include <algorithm>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -87,15 +89,21 @@ TEST_CASE("The final bidder cannot make the bids add up exactly", "[validation]"
     REQUIRE_THROWS_AS(engine->run(), std::logic_error);
 }
 
-TEST_CASE("A card the player was never dealt is rejected", "[validation]")
+TEST_CASE("A card index outside the hand is rejected", "[validation]")
 {
     std::vector<ScriptedMoveProvider*> seats;
     const auto engine = buildGame(seats);
 
-    // Checked by identity against the legal set, so a fabricated card fails
-    // however plausible it looks. This is the case a Phase 4 index makes
-    // inexpressible rather than merely detectable.
-    seats[0]->playCardNotInHand = true;
+    // This used to be "a card the player was never dealt", tested by handing
+    // the engine a fabricated Card and watching it fail a membership check.
+    // That move no longer exists: the boundary is an index into the hand, so a
+    // card the player does not hold cannot be named at all, and the only
+    // remaining bad answer is a position past the end of the hand.
+    //
+    // The check that replaced it is strictly stronger - a range check against a
+    // hand the engine already holds, rather than a search a hostile caller
+    // could hope to satisfy - and it is the whole point of the index boundary.
+    seats[0]->playOutOfRangeIndex = true;
 
     REQUIRE_THROWS_AS(engine->run(), std::logic_error);
 }
@@ -112,6 +120,55 @@ TEST_CASE("A card that fails to follow suit is rejected", "[validation]")
         seats[i]->playFirstIllegalCard = true;
 
     REQUIRE_THROWS_AS(engine->run(), std::logic_error);
+}
+
+TEST_CASE("Playing a card removes exactly that card, and nothing else moves", "[validation]")
+{
+    std::vector<ScriptedMoveProvider*> seats;
+    const auto engine = buildGame(seats);
+
+    // The invariant the index boundary creates, and the one thing it could get
+    // wrong that a card-returning boundary could not: the engine now erases by
+    // POSITION, so an off-by-one would quietly play a different card than the
+    // one the provider chose. Nothing else in the suite would notice - the card
+    // erased would still be a legal card from a legal hand.
+    struct HandWatcher : IGameObserver
+    {
+        std::vector<Card> before;
+        Seat watched{0};
+
+        void onCardRequested(const GameEngine& engine, Seat seat) override
+        {
+            watched = seat;
+            before = engine.getPlayers().at(seat.index).getHand();
+        }
+
+        void onCardPlayed(const GameEngine& engine, Seat seat, const Card& card) override
+        {
+            REQUIRE(seat == watched);
+
+            const std::vector<Card>& after = engine.getPlayers().at(seat.index).getHand();
+
+            REQUIRE(after.size() + 1 == before.size());
+
+            // Rebuild what the hand should now be by dropping the first copy of
+            // the played card, and require the survivors kept their order. A
+            // hand that merely still *contains* the right cards would pass a
+            // weaker check while having been shuffled underneath the player.
+            std::vector<Card> expected = before;
+            const auto it = std::find(expected.begin(), expected.end(), card);
+
+            REQUIRE(it != expected.end());
+            expected.erase(it);
+
+            REQUIRE(after == expected);
+        }
+    };
+
+    HandWatcher watcher;
+    engine->addObserver(&watcher);
+
+    REQUIRE_NOTHROW(engine->run());
 }
 
 TEST_CASE("A scripted game that plays legally throws nothing", "[validation]")

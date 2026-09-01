@@ -8,12 +8,13 @@
 
 namespace romanian_whist
 {
-// A card and the seat that played it. Phase 4 of ENGINE_V4_PLAN.md turns the
-// card into a Card by value; the seat stays as it is.
+// A card and the seat that played it. The card is held by value: a Trick
+// outlives the round it belongs to, and the deck it was dealt from is
+// reshuffled at the top of the next one.
 struct PlayedCard
 {
     Seat seat;
-    Card* card;
+    Card card;
 };
 
 class Trick
@@ -28,7 +29,7 @@ private:
 public:
     Trick();
 
-    void addPlayedCard(Seat seat, Card* card);
+    void addPlayedCard(Seat seat, Card card);
 
     // In the order the cards were played, so the first entry is the leader's.
     const std::vector<PlayedCard>& getPlayedCards() const;
@@ -37,7 +38,7 @@ public:
     // of cards - no strategy asks who played what - so this is what gets handed
     // to a move provider. Built fresh each call, against a hand of at most
     // eight cards.
-    std::vector<Card*> cardsInPlayOrder() const;
+    std::vector<Card> cardsInPlayOrder() const;
 
     void setLeadSuit(Suit suit);
 

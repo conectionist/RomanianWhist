@@ -8,11 +8,28 @@
 #include <romanian_whist/Scoreboard.h>
 #include <romanian_whist/Seat.h>
 
+#include <catch2/catch_tostring.hpp>
+
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
+
+// Cards are compared by value all over the suite now, and without this every
+// mismatch prints as "{ {?}, {?} }" - which says two hands differ but not how.
+// Lives here because every test file already includes this header.
+namespace Catch
+{
+template<>
+struct StringMaker<romanian_whist::Card>
+{
+    static std::string convert(const romanian_whist::Card& card)
+    {
+        return card.toString();
+    }
+};
+}
 
 namespace romanian_whist::test
 {

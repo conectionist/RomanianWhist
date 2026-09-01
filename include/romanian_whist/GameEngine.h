@@ -298,8 +298,10 @@ public:
     // out.
     void requestStop();
 
-    Card* getCurrentTrumpCard();
-    const Card* getCurrentTrumpCard() const;
+    // Empty in 8-card rounds, which have no trump. By value: the deck it was
+    // dealt from is reshuffled at the top of every round, so a pointer would
+    // stop meaning this card the moment the round ended.
+    std::optional<Card> getCurrentTrumpCard() const;
 
     // Who leads the next trick: the round leader until the first trick is won,
     // then each trick's winner.
@@ -369,6 +371,12 @@ public:
     // past getCurrentRoundIndex() names a round that exists but has not been
     // played: no bets, no tricks, no trump. Throws std::out_of_range past the
     // end of the schedule, and std::logic_error before the game has started.
+    //
+    // Until Phase 4 of ENGINE_V4_PLAN.md this could not be trusted: a finished
+    // Round held its trump and its tricks as Card* into a deck that is
+    // reshuffled every round, so from round two on it reported cards that were
+    // never played in it. Cards are held by value now, so a round means what it
+    // says for the life of the game.
     const Round& getRound(unsigned int index) const;
 
     // Read-only access to the deck, for inspecting composition and shuffle

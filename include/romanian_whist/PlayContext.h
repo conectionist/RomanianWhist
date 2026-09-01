@@ -3,6 +3,7 @@
 
 #include <romanian_whist/Card.h>
 
+#include <optional>
 #include <vector>
 
 namespace romanian_whist
@@ -14,17 +15,17 @@ struct PlayContext
 {
     // The player's hand, legal and illegal cards alike. Run it through
     // CardValidator::getLegalCards() before choosing from it.
-    const std::vector<Card*>& hand;
+    const std::vector<Card>& hand;
 
     // The trick so far, in the order the cards were played. Empty when this
     // player is leading.
-    const std::vector<Card*>& playedCards;
+    const std::vector<Card>& playedCards;
 
-    // Null in 8-card rounds, which have no trump.
-    Card* trump = nullptr;
+    // Empty in 8-card rounds, which have no trump.
+    std::optional<Card> trump;
 
-    // Null when this player is leading the trick, and so is the one setting it.
-    const Suit* leadSuit = nullptr;
+    // Empty when this player is leading the trick, and so is the one setting it.
+    std::optional<Suit> leadSuit;
 
     // What this player bid for the round, and how many tricks they have taken
     // of it so far, so a strategy can tell whether it still owes tricks.

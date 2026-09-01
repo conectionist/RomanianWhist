@@ -21,9 +21,9 @@ unsigned int LowRiskStrategy::getBestBet(const BetContext &context)
     return bet;
 }
 
-Card *LowRiskStrategy::getBestChoice(const PlayContext &context)
+std::optional<Card> LowRiskStrategy::getBestChoice(const PlayContext &context)
 {
-    const std::vector<Card*> legalCards = cardValidator.getLegalCards(context.hand,
+    const std::vector<Card> legalCards = cardValidator.getLegalCards(context.hand,
                                                                       context.trump,
                                                                       context.leadSuit);
 
