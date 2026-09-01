@@ -2182,7 +2182,7 @@ Each cost a pass over the source to find, and none is visible from the decision 
 
 #### What it came to
 
-All four verification gates passed: `ctest` green on both presets (**70 → 80 tests**, counting the
+All four verification gates passed: `ctest` green on both presets (**70 → 83 tests**, counting the
 review follow-ups below), `-Wall -Wextra` clean in both repos, golden scores byte-identical, and all
 four rendered transcripts byte-identical at 15,668 lines each — re-checked after the review fixes,
 since those touched engine code.
@@ -2227,6 +2227,14 @@ since those touched engine code.
   Catch2 renders `{?}` regardless of what specializations are in scope. It is a compile definition
   rather than a `#define` in the header because it must precede `catch_tostring.hpp`, which
   `catch_test_macros.hpp` already pulls in.
+- **The one guard this phase created had nothing testing it.** Before Phase 4, a strategy returning
+  a card the player did not hold was caught downstream by the engine's own legality check. That
+  check is now structurally unreachable — an in-range index names a card in the hand by
+  construction — so `AiMoveProvider`'s throw is all that replaced it, on a bridge every AI seat
+  crosses every trick, behind a public `IStrategy` anyone may implement. `AiMoveProviderTests`
+  covers it, along with the translation itself at the first, middle and last positions, and the
+  distinction between "no legal play" and "a card you do not hold". Deleting the throw fails
+  exactly **one** test out of 83, which is the measure of how exposed it was.
 - **The tie-break invariant is pinned by tests now, not just by comments.** `TrickHeuristicsTests`
   asserts that `mostDangerous`/`leastDangerous` return the *first* of a run of equivalents, and that
   `safeCards` preserves input order through `chooseDuckingCard`. Both were verified against fair

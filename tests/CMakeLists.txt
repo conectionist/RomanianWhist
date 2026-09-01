@@ -20,6 +20,7 @@ add_executable(romanian_whist_engine_tests
     RandomPlayPropertyTests.cpp
     RoundHistoryTests.cpp
     TrickHeuristicsTests.cpp
+    AiMoveProviderTests.cpp
 )
 
 target_link_libraries(romanian_whist_engine_tests PRIVATE
