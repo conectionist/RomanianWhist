@@ -107,7 +107,10 @@ const Round &Scoreboard::getCurrentRound() const
 
 const Round &Scoreboard::getRound(unsigned int index) const
 {
-    return rounds[index];
+    // The index comes from a caller rather than from our own state, so the
+    // bound is ours to enforce - .at() rather than [], even though
+    // GameEngine::getRound() checks first and says something more useful.
+    return rounds.at(index);
 }
 
 unsigned int Scoreboard::getRoundCount() const

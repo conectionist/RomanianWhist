@@ -677,10 +677,9 @@ const Round &GameEngine::getRound(unsigned int index) const
 {
     requireStarted();
 
-    // Scoreboard::getRound() indexes `rounds` unguarded, exactly as
-    // getCurrentRound() does, so the bounds check has to happen here or not at
-    // all - and "not at all" is a read of arbitrary memory rather than an
-    // error a client can catch.
+    // Scoreboard::getRound() bounds-checks too, so this is not what keeps the
+    // read in range. It is here to say how far the schedule actually goes,
+    // which is what a caller who got the index wrong needs to know.
     if(index >= scoreboard.getRoundCount())
         throw std::out_of_range("GameEngine::getRound: round " + std::to_string(index)
                                 + " is past the end of a " + std::to_string(scoreboard.getRoundCount())
