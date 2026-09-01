@@ -6,6 +6,8 @@
 #include <romanian_whist/CardValidator.h>
 #include <romanian_whist/PlayContext.h>
 
+#include <optional>
+
 #include <vector>
 
 namespace romanian_whist
@@ -18,7 +20,10 @@ protected:
 public:
     virtual ~IStrategy() = default;
     virtual unsigned int getBestBet(const BetContext& context) = 0;
-    virtual Card* getBestChoice(const PlayContext& context) = 0;
+    // The card to play, or empty when there is no legal play at all.
+    // Strategies reason in cards; turning that into the index the engine
+    // wants is AiMoveProvider's job, and only its job.
+    virtual std::optional<Card> getBestChoice(const PlayContext& context) = 0;
 };
 
 } // namespace romanian_whist

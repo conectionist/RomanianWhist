@@ -891,7 +891,7 @@ around. Starting it before Phase 3 lands means writing code twice.
 Each phase ends with the full test suite green and the terminal client playable. **Do not
 proceed to the next phase until both hold** — see §4 for what "playable" requires.
 
-**Progress: Phases 0, 1, 2 and 3 done, engine and terminal both. Phases 4–6 not started — Phase 4 is next.**
+**Progress: Phases 0-4 done, engine and terminal both. Phases 5 and 6 not started — Phase 5 is next.**
 
 ### Phase 0 — Make the engine testable, then pin its behaviour [DONE]
 
@@ -1835,7 +1835,7 @@ distinct names. No client changes are needed.
 
 ---
 
-### Phase 4 — Cards by value [NOT STARTED]
+### Phase 4 — Cards by value [DONE]
 
 Removes the two subtlest rules in the codebase, and fixes one live bug. No other phase depends on
 it, but "optional" overstates that — see the third bullet.
@@ -1947,6 +1947,309 @@ already think in terms of a numbered hand.
 **Verify:** golden scores unchanged — this phase must not alter play at all. What it *does* alter
 is what a finished round reports about itself, which goes from wrong to right: any assertion over
 round history has to be written after this phase, never before it.
+
+---
+
+#### The working plan
+
+Everything above is the decision. What follows is the execution: the order, the exact signatures,
+and the six things reading the code turns up that the decision above does not mention.
+
+**0. Baseline — record it before touching anything.**
+
+The hard guarantee is that play does not change at all, and two nets prove it. Both need a
+"before" captured while the tree is still clean:
+
+```bash
+cd RomanianWhist && cmake --build build -j8 && ctest --test-dir build   # 70/70 today
+
+cd ../romanian_whist_terminal
+for s in 1 42 7777 123456; do
+  ./build/terminal_romanian_whist --demo --no-animate --no-color --no-alt-screen \
+      --no-clear --seed=$s > before-$s.txt </dev/null
+done
+```
+
+Recorded at the start of this phase: **15,668 lines each**, and at seed 42 md5
+`04a9fe5a834068cceaf8452d4fe22ab0` — the same line count Phase 3 signed off on. Four seeds rather
+than one, because a single seed walks one narrow path through the strategies and this phase touches
+every one of them. The golden scores need no recording; they are already frozen in
+`tests/GoldenGameTests.cpp`.
+
+**1. Reproduce the bug first.**
+
+§2's third finding — every retained `Round` misreports its own trump and tricks from round two
+onward — is **currently unobservable from outside the engine**. `getCurrentRound()` is public;
+there is no way to read a *finished* round. So the fix would otherwise land with nothing asserting
+it. Fix that before fixing the bug:
+
+1. Add the accessor. It mirrors an already-public one, so it commits to nothing new:
+
+```cpp
+// Any round in the schedule, played or not. The schedule is laid out in full by
+// start(), so a round after getCurrentRoundIndex() exists but is empty - no
+// bets, no tricks, no trump. Throws std::out_of_range past the schedule.
+const Round& getRound(unsigned int index) const;
+```
+
+2. Write the regression test **against the current, pointer-holding engine**: run a 4-player S_818
+   game at the golden seed; snapshot round 0's trump and every trick's cards by value at
+   `onRoundScored`; after `run()` returns, re-read round 0 through `getRound(0)` and require the two
+   agree.
+3. Run it. **It must fail** — round 0's stored cards have been permuted by every shuffle since.
+   That failure is the point; record it in the PR.
+
+Only then do the type flip, and watch the same test pass. This is the discipline Phase 0 used on
+the `setResult`/`hasBet` bug ("reproduced against the built library before fixing"), and it is the
+difference between a fix and a claim.
+
+**2. The signatures, in dependency order.**
+
+The tree does not compile again until this step is finished — the change propagates through the
+whole call graph at once. Work leaf-first and let the compiler drive:
+
+`Card` → `CardValidator` → `TrickHeuristics` → `IStrategy` + the four strategies →
+`PlayContext`/`BetContext` → `IMoveProvider` → `AiMoveProvider` → `Player` → `Trick` → `Round` →
+`GameEngine`.
+
+```cpp
+bool Card::operator==(const Card&) const = default;          // C++20; already cxx_std_20
+
+std::vector<Card> CardValidator::getLegalCards(const std::vector<Card>& hand,
+                                               std::optional<Card> trump,
+                                               std::optional<Suit> leadSuit) const;
+static bool CardValidator::beats(const Card& candidate, const Card& currentBest,
+                                 Suit leadSuit, std::optional<Card> trump);
+static std::optional<Card> CardValidator::getWinningCard(const std::vector<Card>& playedCards,
+                                                         Suit leadSuit, std::optional<Card> trump);
+
+std::optional<Card> heuristics::mostDangerous(const std::vector<Card>&, std::optional<Card> trump);
+std::optional<Card> heuristics::leastDangerous(const std::vector<Card>&, std::optional<Card> trump);
+// chooseDuckingCard, chooseWinningCard, isMoreDangerous, countLikelyWinners move with them.
+
+virtual std::optional<Card>        IStrategy::getBestChoice(const PlayContext&) = 0;
+virtual std::optional<std::size_t> IMoveProvider::playCard(const PlayContext&) = 0;
+
+std::vector<Card>   Player::hand;                            // was std::vector<Card*>
+void                Player::addCardToHand(Card card);
+std::optional<Card> Player::playCard(std::optional<Card> trump, std::optional<Suit> leadSuit,
+                                     const std::vector<Card>& playedCards,
+                                     unsigned int bet, unsigned int tricksWon);
+
+struct PlayedCard { Seat seat; Card card; };                 // 16 bytes -> 8
+void              Trick::addPlayedCard(Seat seat, Card card);
+std::vector<Card> Trick::cardsInPlayOrder() const;
+
+std::optional<Card> Round::trump;                            // member; drop the ctor's nullptr
+void                Round::setTrumpCard(Card card);
+std::optional<Card> Round::getTrumpCard() const;             // the const/non-const pair collapses
+void                Round::addCardToCurrentTrick(Seat seat, Card card);
+
+std::optional<Card> GameEngine::getCurrentTrumpCard() const; // both overloads collapse into one
+```
+
+`PlayContext` and `BetContext`: `hand` and `playedCards` stay *references* to
+`std::vector<Card>` — `hand` aliases the player's own vector, and `playedCards` binds to the
+temporary from `cardsInPlayOrder()`, whose lifetime already extends across the full call
+expression. `trump` becomes `std::optional<Card>`, `PlayContext::leadSuit` becomes
+`std::optional<Suit>`. Keep the member order: both are aggregate-initialised in `Player.cpp`.
+(`BetContext` gains `roundType` in Phase 5, at the end of the struct — not here.)
+
+`Player::playCard` range-checks the index and erases by position. The check lives there rather than
+in `GameEngine` because that is where the hand is, and the method is private and `friend`-restricted
+to `GameEngine`, so no client can reach it. `std::remove` goes away: erasing by position removes
+exactly one card, where `std::remove` on a pointer removed every equal one — same result on a hand
+of unique cards, one fewer invariant relied on.
+
+**The bug fix itself is two lines**, in `GameEngine::dealCards()`: `addCardToHand(deck[index])` and
+`setTrumpCard(deck[index + 1])`, both now copies rather than addresses into a deck that is about to
+be reshuffled.
+
+`playTrick()` keeps its shape, with two notes. The `legalCards` snapshot taken before the provider
+is asked is now a self-contained copy rather than pointers into the deck — it was only ever safe by
+accident, and is now safe by construction. And the *membership* half of its legality check is
+structurally unreachable (an in-range index names a card the player holds); keep the `std::find`
+for the follow-suit half, but rewrite the comment above it, which currently gives the membership
+case as its reason.
+
+**3. Tests.**
+
+**This is the one phase that must edit 0e's unit tests**, and §0e's "these must survive every later
+phase unchanged" does not survive contact with it — the card type they assert over is what is
+moving. Every edit below is mechanical retyping of *how* a case is expressed, never of what it
+asserts. If any assertion's meaning changes, that is a bug in the port.
+
+| File | Work |
+|---|---|
+| `CardValidatorTests.cpp` | Retype `std::vector<Card*>{ &x, &y }` to `std::vector<Card>{ x, y }`, `nullptr` to `std::nullopt`. **Gets shorter and more readable** — `operator==` means the expectations stop being address comparisons. |
+| `TrickTests.cpp` | `played[0].card == &heartsTwo` → `== heartsTwo`; `cardsInPlayOrder()` expectations become value vectors. |
+| `ObserverTests.cpp` | Line 510 `played.back().card == &card` → `== card`; line 516 `.card->suit` → `.card.suit`; the inline `DrivingProvider::playCard` override at line 705 returns an index. |
+| `RandomPlayPropertyTests.cpp` | `followsTheRules` takes values and optionals; `handBeforePlay` becomes a real copy of the hand rather than of pointers into the deck. **Rewrite its opening comment** — see finding 6 below. |
+| `ScriptedMoveProvider.h` | `playCard` returns an index into `context.hand`. Rename `playCardNotInHand` → `playOutOfRangeIndex`, returning `context.hand.size()`; drop the `static Card fabricated`. `playFirstIllegalCard` returns the position of the first hand card absent from the legal set. The fallback path has to map its choice back from the legal set to a hand position — the same translation `ConsoleMoveProvider` grows, for the same reason. |
+| `MoveValidationTests.cpp` | "A card the player was never dealt is rejected" becomes "An out-of-range card index is rejected". Its comment already predicts this; make it say which side of the line it is now on. |
+| `GoldenGameTests.cpp`, `GameHarness.*` | **Verified to need no change.** The Phase 0f shim reads only scores and (bid, tricksWon), which is exactly what it was designed for. If either needs an edit, something is wrong. |
+
+Two new cases:
+
+1. **The retained-round regression** from step 1 — the phase's headline.
+2. **The erase is positional.** Snapshot the hand at `onCardRequested`; require at `onCardPlayed`
+   that it is the snapshot minus exactly the played card, with the remaining order intact. Nothing
+   asserts this today, and it is the new invariant the index boundary creates.
+
+**4. Terminal client.**
+
+Per §4 the phase is not done when the engine compiles — it is done when the terminal plays.
+
+`CardFormat`'s current entry point cannot serve both callers after this change: `GameView` wants a
+sorted list of cards, `ConsoleMoveProvider` now wants a sorted list of *hand positions*. Split the
+ordering out so each sorts what it holds:
+
+```cpp
+static bool inDisplayOrder(const Card& left, const Card& right, std::optional<Card> trump);
+static void sortForDisplay(std::vector<Card>& cards, std::optional<Card> trump);
+```
+
+The comparator admits no ties within one hand — suit position is injective over suits, and a hand
+holds no two cards of the same suit and rank — so `std::sort` being unstable costs nothing and
+display order does not move. That is what keeps the transcript diff empty.
+
+`GameView.cpp`: `getCurrentTrumpCard()` returns an optional, so lines 68-71 become
+`view.hasTrump = trump.has_value()`; the human's hand at 127-133 sorts a `std::vector<Card>` copied
+straight out of `getHand()`, and the `const Card*` indirection goes.
+
+`ConsoleMoveProvider`: `layOutHand` returns `std::vector<std::size_t>` — hand positions, in display
+order, legal subset. Build `order` as `0..hand.size()-1`, sort it with `inDisplayOrder`, then walk
+it as today, except the legality test becomes a value `std::find` into `legalCards` and `choices`
+collects `i` rather than the card. `playCard` returns `choices[choice - 1]`. **Expect it to get
+about four lines longer** — the cost this phase's decision insists on stating rather than
+pretending away.
+
+**5. Verification.** All four required:
+
+1. `ctest` green on **both** presets, including the two new cases.
+2. `-Wall -Wextra` clean on both.
+3. **Golden scores byte-identical.** Not close — identical. A moved score means the port is wrong,
+   and finding 1 below is the first place to look.
+4. **All four transcripts byte-identical** to the step-0 baselines (`diff -q` per seat).
+
+Then play a real game by hand: the transcripts cover the demo path, not the human bidding and
+card-choosing prompts that `layOutHand` was just rewritten under.
+
+**6. Commits.** Engine branch `phase-4-cards-by-value` (the shared `engine-v4` branch was merged
+and deleted at Phase 3, so each repo branches per phase now):
+
+1. `Card` gains a defaulted `operator==` — standalone, compiles and tests on its own.
+2. `GameEngine::getRound(index)` — additive, plus its guard test. Lands before the fix so the
+   regression test has something to fail against.
+3. Cards by value — everything in 2 and 3 above. Unavoidably wide; order the diff leaf-first so a
+   reviewer can read it in dependency order. Carries the regression test, now passing.
+
+Terminal branch, one commit: the client migration plus the submodule SHA. **Do not merge the engine
+branch before the terminal migration is written and verified** (§4).
+
+#### Six things reading the code turns up
+
+Each cost a pass over the source to find, and none is visible from the decision above.
+
+1. **`CardValidator::beats` has to move as well**, and it is not in the change list above. It takes
+   `const Card* trump`; leaving it there forces `trump ? &*trump : nullptr` at all four call sites
+   (`getWinningCard`, `safeCards`, `winningCards`, `GameEngine::cardBeats`). An API where one
+   function takes an optional and the function beside it takes a pointer with a null convention is
+   exactly what this phase exists to delete. The cost is retyping five `SECTION`s.
+2. **`GameEngine::getCurrentTrumpCard()` is public API and both overloads collapse into one.** The
+   change list names `Round` and the contexts but not the engine accessor every client reads trump
+   through — `GameView.cpp:68` is the live call site.
+3. **The bug this phase fixes is unobservable from outside the engine** until `getRound()` exists.
+   Without it the fix lands unasserted; hence step 1.
+4. **`mostDangerous`/`leastDangerous` tie-breaking is positional, not comparator-decided.** They are
+   `std::max_element`/`std::min_element` over a comparator that ranks by trump-ness then rank — so
+   two plain aces of different suits compare *equivalent*, and which one comes back is decided by
+   position. Both algorithms return the first of a run of equals. That stays true only while the
+   port preserves element order everywhere (`getLegalCards`, `safeCards`, `winningCards` all push in
+   input order today — keep it that way). Do not "tidy" any of them into something that reorders,
+   and do not swap `min_element` for `std::ranges::min` without checking its tie rule. **This is the
+   only realistic way a mechanical port moves a golden score.**
+5. **`Round::addCardToCurrentTrick` loses its null-card guard.** A `Card` by value is always a card,
+   so the check has nothing left to test — delete it and its clause in the header comment. No test
+   asserts it, so nothing breaks; say it in the commit anyway, because a vanished throw reads as an
+   oversight in review.
+6. **`ScriptedMoveProvider` and `RandomPlayPropertyTests` lose real coverage to structure.** "Plays a
+   card it does not hold" stops being a test the engine can fail, because it stops being a thing a
+   provider can say: `followsTheRules`'s `std::find` membership check and the `playCardNotInHand`
+   flag were both testing a guard that no longer has a failure mode. That is the phase working as
+   designed — but both files' comments currently claim otherwise, and must be rewritten rather than
+   left to mislead the next reader.
+
+#### What it came to
+
+All four verification gates passed: `ctest` green on both presets (**70 → 83 tests**, counting the
+review follow-ups below), `-Wall -Wextra` clean in both repos, golden scores byte-identical, and all
+four rendered transcripts byte-identical at 15,668 lines each — re-checked after the review fixes,
+since those touched engine code.
+
+- **The bug was reproduced before it was fixed, and the reproduction is worth reading.** Round 0 of
+  a 4-player S_818 game was played as `{9C, QC, 10C, 7C}, {AD, 9D, JD, 10D}` — clean, suit-following
+  tricks. After the game the same round reported `{8S, 7S, AH, 7D}, {10S, JH, 10D, 9S}`: tricks that
+  do not even follow suit, because the stored pointers now index reshuffled slots. Nothing about the
+  failure looks like an aliasing bug from the outside, which is exactly why it survived this long.
+- **Two accessors were needed, not one.** `getRound(index)` was planned; `Round::getTrick(index)`
+  was not, and without it a completed trick is unreachable — `Round` exposed `getPlayedTrickCount()`
+  and nothing else. "Render the previous round" was impossible for two reasons, and the plan had
+  only found one of them.
+- **The `-Wall -Wextra` sweep surfaced one warning, in `GameEngineTests.cpp`, which this phase never
+  touched** (an unused `startedGame` helper). Left alone deliberately: it is pre-existing and fixing
+  it here would put an unrelated change in a diff whose whole claim is that nothing behavioural
+  moved.
+- **The positional-erase test was mutation-checked, passed, and was still inadequate — read this
+  one before writing the next mutation check.** As first written it compared the engine's *reported*
+  card against the hand snapshot. `Player::playCard` reads the card it reports and erases the card
+  it removes at the same index, so a **consistent** off-by-one moves both together and every
+  assertion in the test still holds. The mutant that "proved" the test worked shifted only the
+  erase — an inconsistent bug, and a strictly easier one, which the move validator catches on its
+  own the moment it plays an illegal card. A fair mutant (shift both, only when leading, where every
+  card is legal and the validator has nothing to say) passes the original test clean while playing
+  the wrong card on every lead.
+
+  This is the same trap §0e records finding in the property suite — deriving "expected" from the
+  very thing under test — reached by a different route, and the mutation check did not stop it
+  because the mutant was chosen to fail. **A mutation check proves your test catches *that* mutant
+  and nothing else; pick the bug you would actually ship.** The fix is to record what the provider
+  *meant* to play (`ScriptedMoveProvider::lastIntendedCard`) and assert the engine played it — the
+  only assertion that ties a provider's choice to the engine's action rather than to the engine's
+  own report of it.
+- **`Card` gained a Catch2 `StringMaker`, in `tests/CardStringMaker.h`** — its own header, not
+  `GameHarness.h`, because `CardValidatorTests`, `TrickTests` and `ScoreboardTests` carry the
+  heaviest by-value assertions and none of them uses the harness. It also has to be visible in
+  *every* TU that compares `Card`s: specialising it in one while another instantiates the primary
+  template is ill-formed, no diagnostic required. The test target additionally defines
+  `CATCH_CONFIG_ENABLE_OPTIONAL_STRINGMAKER`, since half these comparisons are on an
+  `std::optional<Card>` — trump, `getWinningCard()`, everything `TrickHeuristics` returns — which
+  Catch2 renders `{?}` regardless of what specializations are in scope. It is a compile definition
+  rather than a `#define` in the header because it must precede `catch_tostring.hpp`, which
+  `catch_test_macros.hpp` already pulls in.
+- **The one guard this phase created had nothing testing it.** Before Phase 4, a strategy returning
+  a card the player did not hold was caught downstream by the engine's own legality check. That
+  check is now structurally unreachable — an in-range index names a card in the hand by
+  construction — so `AiMoveProvider`'s throw is all that replaced it, on a bridge every AI seat
+  crosses every trick, behind a public `IStrategy` anyone may implement. `AiMoveProviderTests`
+  covers it, along with the translation itself at the first, middle and last positions, and the
+  distinction between "no legal play" and "a card you do not hold". Deleting the throw fails
+  exactly **one** test out of 83, which is the measure of how exposed it was.
+- **The tie-break invariant is pinned by tests now, not just by comments.** `TrickHeuristicsTests`
+  asserts that `mostDangerous`/`leastDangerous` return the *first* of a run of equivalents, and that
+  `safeCards` preserves input order through `chooseDuckingCard`. Both were verified against fair
+  mutants: a hand-rolled rewrite keeping the last of a run, and a reversed `safeCards`. The first
+  moves five of the seven golden games, which is the point — the goldens *do* catch a reordering,
+  but only as "scores moved somewhere", and this says which function and which card.
+- **The human path needed its own check and nearly did not get one.** The four transcripts cover the
+  demo, where no `ConsoleMoveProvider` prompt is ever drawn — so they prove nothing about
+  `layOutHand`, the one function the client rewrote. A scripted full game through the human seat
+  (78 multi-card prompts) confirmed the number typed still plays the card shown against it: the
+  translation from display order back to hand position holds. Three orderings meet in that function
+  and no two of them coincide.
+- **`sortForDisplay` had to split in two.** `GameView` sorts cards; `ConsoleMoveProvider` now sorts
+  *positions*, because the engine wants a hand index back. A shared `inDisplayOrder` comparator
+  serves both. This is the "gets slightly longer" the phase promised, and it did: about four lines.
 
 ---
 
@@ -2095,7 +2398,7 @@ refactor, and could ship on its own.
    2a. run() beside the old loop, both paths asserted equal
    2b. old driving API goes private; duplicated loop deleted
 3. GameSetup + start(); validation consolidated; getStandings()              [no behaviour change] [DONE]
-4. cards by value; playCard returns an index; fixes retained-round aliasing  [no behaviour change]
+4. cards by value; playCard returns an index; fixes retained-round aliasing  [no behaviour change] [DONE]
 5. Forehead/Hidden: BetContext.roundType, canSeeHand(), one strategy         [changes play]
 6. docs, version 4.0.0, submodule pin
 ```

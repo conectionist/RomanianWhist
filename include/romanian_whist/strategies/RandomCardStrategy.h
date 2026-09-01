@@ -18,7 +18,7 @@ public:
     explicit RandomCardStrategy(std::uint32_t seed);
 
     unsigned int getBestBet(const BetContext& context) override;
-    Card* getBestChoice(const PlayContext& context) override;
+    std::optional<Card> getBestChoice(const PlayContext& context) override;
 };
 
 } // namespace romanian_whist

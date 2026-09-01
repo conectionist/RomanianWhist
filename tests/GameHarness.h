@@ -8,6 +8,8 @@
 #include <romanian_whist/Scoreboard.h>
 #include <romanian_whist/Seat.h>
 
+#include "CardStringMaker.h"
+
 #include <cstdint>
 #include <memory>
 #include <string>

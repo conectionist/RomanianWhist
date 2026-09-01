@@ -1,6 +1,7 @@
 #include <romanian_whist/Round.h>
 
 #include <stdexcept>
+#include <string>
 
 namespace romanian_whist
 {
@@ -8,7 +9,6 @@ Round::Round(unsigned int _trickCount,
              Seat _roundLeader,
              unsigned int seatCount,
              RoundType _type) : bets(seatCount),
-                                trump(nullptr),
                                 trickCount(_trickCount),
                                 type(_type),
                                 trickLeaderSeat(_roundLeader),
@@ -16,6 +16,13 @@ Round::Round(unsigned int _trickCount,
 {
     if(_roundLeader.index >= seatCount)
         throw std::out_of_range("Round::Round: round leader seat out of range");
+
+    // getTrick() hands out a reference into this vector, and addTrick() grows it
+    // by push_back all round long - so without this, a reference taken during a
+    // round dangles the moment the next trick is filed. A round is dealt for
+    // exactly trickCount tricks and addTrick() refuses past that, so reserving
+    // that many here means the storage never moves again.
+    tricks.reserve(trickCount);
 }
 
 void Round::addTrick(const Trick &trick)
@@ -49,17 +56,12 @@ void Round::setBet(Seat seat, unsigned int guess)
     bets[seat.index] = guess;
 }
 
-void Round::setTrumpCard(Card *card)
+void Round::setTrumpCard(Card card)
 {
     trump = card;
 }
 
-Card *Round::getTrumpCard()
-{
-    return trump;
-}
-
-const Card *Round::getTrumpCard() const
+std::optional<Card> Round::getTrumpCard() const
 {
     return trump;
 }
@@ -97,11 +99,10 @@ void Round::resetCurrentTrick()
     currentTrick = Trick();
 }
 
-void Round::addCardToCurrentTrick(Seat seat, Card* card)
+void Round::addCardToCurrentTrick(Seat seat, Card card)
 {
-    if(card == nullptr)
-        throw std::logic_error("Round::addCardToCurrentTrick: card must not be null");
-
+    // A Card by value is always a card, so the null check this used to open
+    // with has nothing left to test.
     if(seat.index >= bets.size())
         throw std::out_of_range("Round::addCardToCurrentTrick: seat out of range");
 
@@ -121,7 +122,7 @@ void Round::addCardToCurrentTrick(Seat seat, Card* card)
     // rather than leaving it to the caller is the point of the round owning the
     // trick: there is no longer a way to add a card and forget.
     if(!currentTrick.hasLeadSuit())
-        currentTrick.setLeadSuit(card->suit);
+        currentTrick.setLeadSuit(card.suit);
 
     currentTrick.addPlayedCard(seat, card);
 }
@@ -151,6 +152,15 @@ RoundType Round::getRoundType() const
 std::size_t Round::getPlayedTrickCount() const
 {
     return tricks.size();
+}
+
+const Trick &Round::getTrick(std::size_t index) const
+{
+    if(index >= tricks.size())
+        throw std::out_of_range("Round::getTrick: trick " + std::to_string(index)
+                                + " of a round holding " + std::to_string(tricks.size()));
+
+    return tricks[index];
 }
 
 std::optional<unsigned int> Round::getBet(Seat seat) const

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <iterator>
 #include <optional>
 #include <vector>
 
@@ -46,10 +47,25 @@ public:
     // using it arrange against.
     bool playFirstIllegalCard = false;
 
-    // Set to return a card this player was never dealt. Unlike the flag above
-    // this always fires, whatever was dealt - the engine checks membership by
-    // pointer, and this one points outside the deck entirely.
-    bool playCardNotInHand = false;
+    // Set to name a position past the end of the hand. This is what is left of
+    // "return a card the player was never dealt" now that the boundary is an
+    // index: a fabricated card can no longer be expressed, so the only bad move
+    // a hostile provider can still make is an out-of-range one - and that is a
+    // range check rather than a membership search.
+    bool playOutOfRangeIndex = false;
+
+    // The card this provider MEANT to play, recorded at the moment it picked
+    // one. The index boundary means the provider names a position and the
+    // engine resolves it, so nothing else in the suite can tell the difference
+    // between "the engine played what was chosen" and "the engine played
+    // something consistent with what it reported" - Player::playCard reads and
+    // erases at the same index, so an off-by-one moves both together. This is
+    // the intent that reading is measured against; see the positional-erase
+    // test in MoveValidationTests.cpp.
+    //
+    // Left empty on a pass (no legal card), and on the two sabotage paths,
+    // where the engine is expected to throw before anything is played.
+    std::optional<Card> lastIntendedCard;
 
     unsigned int makeBet(const BetContext& context) override
     {
@@ -66,36 +82,45 @@ public:
         return context.forbiddenBet && *context.forbiddenBet == 0 ? 1u : 0u;
     }
 
-    Card* playCard(const PlayContext& context) override
+    std::optional<std::size_t> playCard(const PlayContext& context) override
     {
-        if(playCardNotInHand)
-        {
-            static Card fabricated(Rank::Ace, Suit::Spades);
-            return &fabricated;
-        }
+        lastIntendedCard.reset();
+
+        if(playOutOfRangeIndex)
+            return context.hand.size();
 
         const CardValidator validator;
-        const std::vector<Card*> legal = validator.getLegalCards(context.hand,
-                                                                 context.trump,
-                                                                 context.leadSuit);
+        const std::vector<Card> legal = validator.getLegalCards(context.hand,
+                                                                context.trump,
+                                                                context.leadSuit);
 
         if(playFirstIllegalCard)
         {
-            for(Card* card : context.hand)
+            for(std::size_t i = 0 ; i < context.hand.size() ; i++)
             {
-                if(std::find(legal.begin(), legal.end(), card) == legal.end())
-                    return card;
+                if(std::find(legal.begin(), legal.end(), context.hand[i]) == legal.end())
+                    return i;
             }
         }
 
         if(legal.empty())
-            return nullptr;
+            return std::nullopt;
 
         const std::size_t choice = cardsPlayed < cardChoices.size() ? cardChoices[cardsPlayed] : 0;
 
         cardsPlayed++;
 
-        return legal[choice < legal.size() ? choice : 0];
+        // The script indexes the LEGAL cards, so the choice has to be mapped
+        // back onto a hand position before it goes out - the same translation
+        // any provider owes when it shows the player a filtered view of the
+        // hand. Cards are unique within a deck, so the first match is the only
+        // one.
+        const Card& picked = legal[choice < legal.size() ? choice : 0];
+        const auto it = std::find(context.hand.begin(), context.hand.end(), picked);
+
+        lastIntendedCard = picked;
+
+        return static_cast<std::size_t>(std::distance(context.hand.begin(), it));
     }
 
 private:

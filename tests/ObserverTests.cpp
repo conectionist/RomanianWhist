@@ -507,13 +507,13 @@ TEST_CASE("Each callback sees the state IGameObserver promises", "[observer]")
 
             REQUIRE_FALSE(played.empty());
             REQUIRE(played.back().seat == seat);
-            REQUIRE(played.back().card == &card);
+            REQUIRE(played.back().card == card);
 
             // The first card of the trick was played by its leader, and it is
             // the one setting the suit everyone else must follow.
             REQUIRE(played.front().seat == trickLeader);
             REQUIRE(engine.getCurrentTrick().hasLeadSuit());
-            REQUIRE(engine.getCurrentTrick().getLeadSuit() == played.front().card->suit);
+            REQUIRE(engine.getCurrentTrick().getLeadSuit() == played.front().card.suit);
 
             // Somebody is winning as soon as a card is down.
             REQUIRE(engine.getCurrentTrickLeader().has_value());
@@ -702,7 +702,7 @@ TEST_CASE("A move provider cannot drive the game either", "[observer]")
         bool threw = false;
         unsigned int attempts = 0;
 
-        Card* playCard(const PlayContext& context) override
+        std::optional<std::size_t> playCard(const PlayContext& context) override
         {
             if(attempts == 0)
             {

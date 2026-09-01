@@ -3,22 +3,25 @@
 #include <romanian_whist/CardValidator.h>
 
 #include <algorithm>
+#include <optional>
 
 namespace romanian_whist::heuristics
 {
 namespace
 {
 // Every legal card that cannot take the trick as it currently stands.
-std::vector<Card*> safeCards(const std::vector<Card*>& legalCards,
-                             const Card& currentBest,
-                             Suit leadSuit,
-                             const Card* trump)
+std::vector<Card> safeCards(const std::vector<Card>& legalCards,
+                            const Card& currentBest,
+                            Suit leadSuit,
+                            std::optional<Card> trump)
 {
-    std::vector<Card*> safe;
+    std::vector<Card> safe;
 
-    for(Card* card : legalCards)
+    // In input order - see mostDangerous()/leastDangerous() on why that is a
+    // rule rather than a habit.
+    for(const Card& card : legalCards)
     {
-        if(!CardValidator::beats(*card, currentBest, leadSuit, trump))
+        if(!CardValidator::beats(card, currentBest, leadSuit, trump))
             safe.push_back(card);
     }
 
@@ -26,16 +29,16 @@ std::vector<Card*> safeCards(const std::vector<Card*>& legalCards,
 }
 
 // Every legal card that would take the trick as it currently stands.
-std::vector<Card*> winningCards(const std::vector<Card*>& legalCards,
-                                const Card& currentBest,
-                                Suit leadSuit,
-                                const Card* trump)
+std::vector<Card> winningCards(const std::vector<Card>& legalCards,
+                               const Card& currentBest,
+                               Suit leadSuit,
+                               std::optional<Card> trump)
 {
-    std::vector<Card*> winners;
+    std::vector<Card> winners;
 
-    for(Card* card : legalCards)
+    for(const Card& card : legalCards)
     {
-        if(CardValidator::beats(*card, currentBest, leadSuit, trump))
+        if(CardValidator::beats(card, currentBest, leadSuit, trump))
             winners.push_back(card);
     }
 
@@ -44,7 +47,7 @@ std::vector<Card*> winningCards(const std::vector<Card*>& legalCards,
 
 } // namespace
 
-bool isMoreDangerous(const Card& a, const Card& b, const Card* trump)
+bool isMoreDangerous(const Card& a, const Card& b, std::optional<Card> trump)
 {
     const bool aIsTrump = trump && a.suit == trump->suit;
     const bool bIsTrump = trump && b.suit == trump->suit;
@@ -57,44 +60,47 @@ bool isMoreDangerous(const Card& a, const Card& b, const Card* trump)
     return static_cast<int>(a.rank) > static_cast<int>(b.rank);
 }
 
-Card* mostDangerous(const std::vector<Card*>& cards, const Card* trump)
+std::optional<Card> mostDangerous(const std::vector<Card>& cards, std::optional<Card> trump)
 {
     if(cards.empty())
-        return nullptr;
+        return std::nullopt;
 
+    // max_element returns the FIRST of a run of equivalents, which is what
+    // makes this deterministic over a weak ordering. Do not swap it for
+    // something that returns the last.
     return *std::max_element(cards.begin(), cards.end(),
-                             [trump](const Card* a, const Card* b)
-                             { return isMoreDangerous(*b, *a, trump); });
+                             [trump](const Card& a, const Card& b)
+                             { return isMoreDangerous(b, a, trump); });
 }
 
-Card* leastDangerous(const std::vector<Card*>& cards, const Card* trump)
+std::optional<Card> leastDangerous(const std::vector<Card>& cards, std::optional<Card> trump)
 {
     if(cards.empty())
-        return nullptr;
+        return std::nullopt;
 
     return *std::min_element(cards.begin(), cards.end(),
-                             [trump](const Card* a, const Card* b)
-                             { return isMoreDangerous(*b, *a, trump); });
+                             [trump](const Card& a, const Card& b)
+                             { return isMoreDangerous(b, a, trump); });
 }
 
-Card* chooseDuckingCard(const PlayContext& context, const std::vector<Card*>& legalCards)
+std::optional<Card> chooseDuckingCard(const PlayContext& context, const std::vector<Card>& legalCards)
 {
     if(legalCards.empty())
-        return nullptr;
+        return std::nullopt;
 
     // Leading: no card is safe, so put down the one that would hurt least to
     // keep and hope somebody covers it.
-    if(context.playedCards.empty() || context.leadSuit == nullptr)
+    if(context.playedCards.empty() || !context.leadSuit)
         return leastDangerous(legalCards, context.trump);
 
-    const Card* currentBest = CardValidator::getWinningCard(context.playedCards,
-                                                            *context.leadSuit,
-                                                            context.trump);
+    const std::optional<Card> currentBest = CardValidator::getWinningCard(context.playedCards,
+                                                                         *context.leadSuit,
+                                                                         context.trump);
 
-    if(currentBest == nullptr)
+    if(!currentBest)
         return leastDangerous(legalCards, context.trump);
 
-    const std::vector<Card*> safe = safeCards(legalCards, *currentBest, *context.leadSuit, context.trump);
+    const std::vector<Card> safe = safeCards(legalCards, *currentBest, *context.leadSuit, context.trump);
 
     // The good case, and the whole point of the strategy: shed the biggest card
     // that still cannot win. A queen on the table with a jack and a nine in
@@ -109,23 +115,23 @@ Card* chooseDuckingCard(const PlayContext& context, const std::vector<Card*>& le
     return leastDangerous(legalCards, context.trump);
 }
 
-Card* chooseWinningCard(const PlayContext& context, const std::vector<Card*>& legalCards)
+std::optional<Card> chooseWinningCard(const PlayContext& context, const std::vector<Card>& legalCards)
 {
     if(legalCards.empty())
-        return nullptr;
+        return std::nullopt;
 
     // Leading: nothing beats holding the highest card out, so lead it.
-    if(context.playedCards.empty() || context.leadSuit == nullptr)
+    if(context.playedCards.empty() || !context.leadSuit)
         return mostDangerous(legalCards, context.trump);
 
-    const Card* currentBest = CardValidator::getWinningCard(context.playedCards,
-                                                            *context.leadSuit,
-                                                            context.trump);
+    const std::optional<Card> currentBest = CardValidator::getWinningCard(context.playedCards,
+                                                                         *context.leadSuit,
+                                                                         context.trump);
 
-    if(currentBest == nullptr)
+    if(!currentBest)
         return mostDangerous(legalCards, context.trump);
 
-    const std::vector<Card*> winners = winningCards(legalCards, *currentBest, *context.leadSuit, context.trump);
+    const std::vector<Card> winners = winningCards(legalCards, *currentBest, *context.leadSuit, context.trump);
 
     // Win it, but spend as little as the trick costs.
     if(!winners.empty())
@@ -136,14 +142,14 @@ Card* chooseWinningCard(const PlayContext& context, const std::vector<Card*>& le
     return leastDangerous(legalCards, context.trump);
 }
 
-unsigned int countLikelyWinners(const std::vector<Card*>& hand, const Card* trump)
+unsigned int countLikelyWinners(const std::vector<Card>& hand, std::optional<Card> trump)
 {
     unsigned int winners = 0;
     unsigned int trumpLength = 0;
 
-    for(const Card* card : hand)
+    for(const Card& card : hand)
     {
-        const bool isTrump = trump && card->suit == trump->suit;
+        const bool isTrump = trump && card.suit == trump->suit;
 
         if(isTrump)
         {
@@ -151,10 +157,10 @@ unsigned int countLikelyWinners(const std::vector<Card*>& hand, const Card* trum
 
             // Only the top of the trump suit is near certain; the rest of it is
             // counted below, by length.
-            if(card->rank == Rank::King || card->rank == Rank::Ace)
+            if(card.rank == Rank::King || card.rank == Rank::Ace)
                 winners++;
         }
-        else if(card->rank == Rank::Ace)
+        else if(card.rank == Rank::Ace)
         {
             // Can still be trumped, but a low-risk player would rather over-bid
             // an ace than be surprised by it.

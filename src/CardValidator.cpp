@@ -2,29 +2,34 @@
 
 namespace romanian_whist
 {
-std::vector<Card*> CardValidator::getLegalCards(const std::vector<Card*>& hand, Card* trump, const Suit* leadSuit) const
+std::vector<Card> CardValidator::getLegalCards(const std::vector<Card>& hand,
+                                               std::optional<Card> trump,
+                                               std::optional<Suit> leadSuit) const
 {
-    std::vector<Card*> legalCards;
+    std::vector<Card> legalCards;
 
     if(hand.empty())
         return legalCards;
 
-    if(leadSuit == nullptr)
+    if(!leadSuit)
         return hand;
 
     const bool mustFollowSuit = hasSuit(hand, *leadSuit);
     const bool mustPlayTrump = !mustFollowSuit && trump && hasSuit(hand, trump->suit);
 
-    for(Card* card : hand)
+    // Pushed in hand order, and that matters beyond tidiness: mostDangerous()
+    // and leastDangerous() break ties by position, so reordering here would
+    // quietly change which of two equally ranked cards a strategy plays.
+    for(const Card& card : hand)
     {
         if(mustFollowSuit)
         {
-            if(card->suit == *leadSuit)
+            if(card.suit == *leadSuit)
                 legalCards.push_back(card);
         }
         else if(mustPlayTrump)
         {
-            if(card->suit == trump->suit)
+            if(card.suit == trump->suit)
                 legalCards.push_back(card);
         }
         else
@@ -36,7 +41,8 @@ std::vector<Card*> CardValidator::getLegalCards(const std::vector<Card*>& hand, 
     return legalCards;
 }
 
-bool CardValidator::beats(const Card& candidate, const Card& currentBest, Suit leadSuit, const Card* trump)
+bool CardValidator::beats(const Card& candidate, const Card& currentBest,
+                          Suit leadSuit, std::optional<Card> trump)
 {
     const bool candidateIsTrump = trump && candidate.suit == trump->suit;
     const bool bestIsTrump = trump && currentBest.suit == trump->suit;
@@ -63,24 +69,25 @@ bool CardValidator::beats(const Card& candidate, const Card& currentBest, Suit l
     return false;
 }
 
-Card* CardValidator::getWinningCard(const std::vector<Card*>& playedCards, Suit leadSuit, const Card* trump)
+std::optional<Card> CardValidator::getWinningCard(const std::vector<Card>& playedCards,
+                                                  Suit leadSuit, std::optional<Card> trump)
 {
-    Card* best = nullptr;
+    std::optional<Card> best;
 
-    for(Card* card : playedCards)
+    for(const Card& card : playedCards)
     {
-        if(best == nullptr || beats(*card, *best, leadSuit, trump))
+        if(!best || beats(card, *best, leadSuit, trump))
             best = card;
     }
 
     return best;
 }
 
-bool CardValidator::hasSuit(const std::vector<Card*>& hand, Suit suit) const
+bool CardValidator::hasSuit(const std::vector<Card>& hand, Suit suit) const
 {
-    for(const auto* card : hand)
+    for(const Card& card : hand)
     {
-        if(card->suit == suit)
+        if(card.suit == suit)
             return true;
     }
 

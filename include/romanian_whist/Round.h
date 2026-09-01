@@ -27,7 +27,7 @@ private:
     // that seat has bid.
     std::vector<std::optional<unsigned int>> bets;
 
-    Card* trump;
+    std::optional<Card> trump;
     unsigned int trickCount;
     RoundType type;
 
@@ -57,9 +57,12 @@ public:
     // round already holds the trickCount tricks it was dealt for.
     void addTrick(const Trick& trick);
     void setBet(Seat seat, unsigned int guess);
-    void setTrumpCard(Card* card);
-    Card* getTrumpCard();
-    const Card* getTrumpCard() const;
+    void setTrumpCard(Card card);
+
+    // Empty in 8-card rounds, which have no trump. By value, so it still names
+    // the card that was actually turned up after later rounds have reshuffled
+    // the deck it came from.
+    std::optional<Card> getTrumpCard() const;
     unsigned int getTrickCount() const;
 
     // Who leads the next trick: moves to each trick's winner. Throws
@@ -78,6 +81,15 @@ public:
 
     std::size_t getPlayedTrickCount() const;
 
+    // A completed trick, with its winner set; index 0 is the round's first.
+    // Throws std::out_of_range at or past getPlayedTrickCount() - the trick in
+    // flight is getCurrentTrick(), and it is not one of these until
+    // finishCurrentTrick() files it.
+    //
+    // Counting the tricks was enough while nothing read them back. Rendering a
+    // finished round means reading the cards too.
+    const Trick& getTrick(std::size_t index) const;
+
     // The trick in flight. Empty between the deal and the first card of trick
     // one; from then on it holds whatever has been played so far - and, once
     // finishCurrentTrick() has run, the completed trick, until the next
@@ -90,10 +102,10 @@ public:
 
     // Appends to the trick in flight, setting the lead suit from the first
     // card. Throws std::out_of_range for a seat that is not at this table, and
-    // std::logic_error if the card is null, if the trick is already full, or if
-    // that seat has already played in it - one card per seat, so a trick can
-    // never rank one seat twice while another never plays.
-    void addCardToCurrentTrick(Seat seat, Card* card);
+    // std::logic_error if the trick is already full or if that seat has already
+    // played in it - one card per seat, so a trick can never rank one seat
+    // twice while another never plays.
+    void addCardToCurrentTrick(Seat seat, Card card);
 
     // Names the winner of the trick in flight and files it among the completed
     // ones. Deliberately does NOT clear it: getTricksWon() must already count

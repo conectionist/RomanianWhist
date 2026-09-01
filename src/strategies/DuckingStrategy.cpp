@@ -13,9 +13,9 @@ unsigned int DuckingStrategy::getBestBet(const BetContext &context)
     return context.forbiddenBet == 0u ? 1u : 0u;
 }
 
-Card *DuckingStrategy::getBestChoice(const PlayContext &context)
+std::optional<Card> DuckingStrategy::getBestChoice(const PlayContext &context)
 {
-    const std::vector<Card*> legalCards = cardValidator.getLegalCards(context.hand,
+    const std::vector<Card> legalCards = cardValidator.getLegalCards(context.hand,
                                                                       context.trump,
                                                                       context.leadSuit);
 
