@@ -132,12 +132,21 @@ TEST_CASE("Golden game: 4 players, S_181, endWithForeheadAndHidden + all1GamesAr
 
     REQUIRE(engine->getRoundCount() == 3 * 4 + 12 + 2);
     REQUIRE(record.size() == engine->getRoundCount());
-    REQUIRE(finalScores(*engine) == std::vector<int>{ 49, 66, 14, 20 });
+    REQUIRE(finalScores(*engine) == std::vector<int>{ 55, 59, 14, 20 });
 
+    // Re-recorded for ENGINE_V4_PLAN.md Phase 5: LowRiskStrategy (seat 1 in the
+    // round-robin) now bids 0 rather than reading its hand in a Forehead/Hidden
+    // round. Only round 1 actually moved - every other one-card round already
+    // heuristically came out to 0 - and the change is confined to that round's
+    // own two bids: seat 1 bids 0 instead of 1, which in turn changes what
+    // GameEngine::getForbiddenBet() bars for the final bidder (seat 0, since
+    // round 1's leader is seat 1), so seat 0's bid moves from 1 to 0 too. Every
+    // row for a Normal round (indices 4-19) is untouched, which is the
+    // required scope check per Phase 5's re-baselining rule.
     // clang-format off
     const RoundRecord expected{
         { {0,0}, {0,0}, {0,0}, {0,1} },
-        { {1,0}, {1,1}, {0,0}, {0,0} },
+        { {0,0}, {0,1}, {0,0}, {0,0} },
         { {0,0}, {0,0}, {0,0}, {0,1} },
         { {0,0}, {0,0}, {0,1}, {0,0} },
         { {0,0}, {0,0}, {0,0}, {0,2} },
