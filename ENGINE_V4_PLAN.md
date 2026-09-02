@@ -631,18 +631,24 @@ struct BetContext
     bool isFirstPlayer = false;
     std::optional<unsigned int> forbiddenBet;
     RoundType roundType = RoundType::Normal;   // added in Phase 5
-    Seat seat = 0;
 };
 ```
 
 **Append new fields at the end.** `Player::getBet` builds this positionally
-(`BetContext{hand, trump, isFirstPlayer, forbiddenBet}`, `Player.cpp:53`), so inserting a field
-in the middle silently misassigns every one after it. **Switch that call site to designated
-initialisers in Phase 0**, along with `Player::playCard`'s `PlayContext{...}` (`Player.cpp:43`). It
-is one line each on C++20 and it retires the hazard outright, which is worth more than carrying a
-warning about it through five more phases.
+(`BetContext{hand, trump, isFirstPlayer, forbiddenBet}`, `Player.cpp:69`), so inserting a field
+in the middle silently misassigns every one after it. An earlier draft of this section said this
+call site — and `Player::playCard`'s `PlayContext{...}` (`Player.cpp:46`) — would be **switched to
+designated initialisers in Phase 0**. That never happened, and it was not merely dropped: Phase 4's
+own spec for these two structs explicitly decided to "keep the member order" and stay with
+positional aggregate init (§Phase 4). The hazard §3.6 said would be retired is therefore still
+live, and Phase 5 is the phase that has to either close it or work carefully around it — see the
+correction in Phase 5 §1 below.
 
-`PlayContext` gains `Seat seat` and is otherwise unchanged.
+**`PlayContext` does not gain a `Seat`.** An earlier draft of this section said it would. Phase 4's
+own worked-out member list for both contexts (§Phase 4, "Keep the member order: both are
+aggregate-initialised in `Player.cpp`") carries no `seat` field on either struct, and notes only
+that `BetContext` gains `roundType` "in Phase 5, at the end of the struct — not here." No phase
+between here and there ever added it. `PlayContext` is unchanged by this phase.
 
 #### The engine does not blind the hand — and could not
 
@@ -849,7 +855,7 @@ change the engine's public API, so the terminal client stops compiling the momen
 | 2 — engine owns the loop | **Done.** As predicted, and confined to the two files named: `TerminalRomanianWhist.{h,cpp}` is now an `IGameObserver`, with `loop()`, `playCurrentRoundTricks()`, `markCurrentlyWinning()` and the `openingSeat` member all deleted; `GameView.cpp` lost `openingSeat`, rebuilds `view.table` from `getCurrentTrick()`, and absorbed the winning-card highlight via `getCurrentTrickLeader()`. `Pacer` calls moved into the callbacks — note `resetSkip()` belongs at the end of `onBettingComplete`, not `onRoundStarted`. Verified by a byte-identical 15,668-line rendered game | `TerminalRomanianWhist.{h,cpp}`, `GameView.{h,cpp}` |
 | 3 — setup | **Done.** As predicted and confined to four files, plus one addition: `applySetup()` → `buildSetup()` returning a `GameSetup` (it no longer touches the engine, but still sets `view.humanSeat`); `Renderer::drawGameOver` takes `std::vector<Standing>`; `GameView`'s scoreboard rows moved off `Player` onto `getRoundScore(Seat)`/`getTotalScore(Seat)`. **A permanent `--seed=<n>` flag was added** so `--demo --no-animate --seed=N` is a repeatable transcript — it feeds `GameSetup::shuffleSeed` and, offset per seat, `RandomCardStrategy`. Verified by four byte-identical 15,668-line rendered games | `TerminalRomanianWhist.{h,cpp}`, `GameView.cpp`, `Renderer.{h,cpp}`, `AppOptions.{h,cpp}` |
 | 4 — cards by value | Moderate | `ConsoleMoveProvider.cpp` (`layOutHand`, index-returning `playCard`), `CardFormat.{h,cpp}`, `GameView.cpp` |
-| 5 — Forehead/Hidden | Small but visible | `ConsoleMoveProvider` (blind bid prompt), `Renderer`/`GameView` (ask `canSeeHand()` per seat instead of deciding from `humanSeat`) |
+| 5 — Forehead/Hidden | **Done.** Small but visible, as predicted, and confined to the files named — plus one data-model addition: `SeatView` gained its own `hand` field so a Forehead round can show every other seat's hand alongside the human's own. `Renderer::appendHand`'s body split into a shared `appendHandBlock` so the new `appendOtherHands` draws through the same code the human's own hand always used. Verified by playing a full game to both appended rounds | `ConsoleMoveProvider.cpp` (blind bid prompt), `GameView.{h,cpp}` (`canSeeHand()` per seat instead of deciding from `humanSeat`), `Renderer.{h,cpp}` |
 | 6 — release | Submodule pin, README | — |
 
 ### How to sequence the commits
@@ -891,7 +897,7 @@ around. Starting it before Phase 3 lands means writing code twice.
 Each phase ends with the full test suite green and the terminal client playable. **Do not
 proceed to the next phase until both hold** — see §4 for what "playable" requires.
 
-**Progress: Phases 0-4 done, engine and terminal both. Phases 5 and 6 not started — Phase 5 is next.**
+**Progress: Phases 0-5 done, engine and terminal both. Phase 6 not started — Phase 6 is next.**
 
 ### Phase 0 — Make the engine testable, then pin its behaviour [DONE]
 
@@ -2253,12 +2259,24 @@ since those touched engine code.
 
 ---
 
-### Phase 5 — Forehead and Hidden [NOT STARTED]
+### Phase 5 — Forehead and Hidden [DONE]
 
 Closes the gap `IMPLEMENTATION_PLAN.md` records. See §3.6 for why this is far smaller than it
 first looks, and for what it deliberately does not do.
 
-1. Add `RoundType roundType` to `BetContext` — **at the end of the struct** (§3.6).
+1. Add `RoundType roundType` to `BetContext` — **at the end of the struct** (§3.6). This is not a
+   header-only change: `Player::getBet` builds the struct positionally
+   (`BetContext{hand, trump, isFirstPlayer, forbiddenBet}`, `Player.cpp:69`) from arguments that do
+   not currently include a round type at all — `GameEngine::runBidding()` calls it as
+   `player.getBet(getCurrentTrumpCard(), i == 0, getForbiddenBet())` (`GameEngine.cpp:298`), with
+   no round-type argument to pass through. So this step is three edits, not one: add a
+   `RoundType` parameter to `Player::getBet`'s signature, pass `getCurrentRoundType()` at the
+   `runBidding()` call site, and add it as the fifth positional argument to the `BetContext{...}`
+   aggregate. §3.6 said the positional-init hazard this creates would be "retired outright" by
+   switching to designated initialisers in Phase 0 — that switch never happened, and Phase 4's
+   own spec for these two structs re-affirmed keeping positional order rather than doing it then.
+   Do the designated-initialiser switch here if the hazard is finally worth closing, or add the
+   argument with the same care the existing three already require.
 2. Add `GameEngine::canSeeHand(Seat viewer, Seat holder)` (§3.6) and unit-test it: three round
    types x self/other.
 3. `LowRiskStrategy::getBestBet` returns 0 when `roundType` is `Forehead` or `Hidden` rather
@@ -2268,6 +2286,15 @@ first looks, and for what it deliberately does not do.
    round, blind or not.
 4. `ConsoleMoveProvider` renders the blind bid prompt. `Renderer` / `GameView` ask
    `canSeeHand()` per seat instead of deciding from `humanSeat`.
+
+**Outcome.** All four steps landed as scoped, with the designated-initialiser switch from step 1
+done rather than deferred again. `SeatView` gained its own `hand` field so `GameView` can show
+every visible OTHER seat's hand alongside the human's own top-level one, and `Renderer::appendHand`
+split into a shared `appendHandBlock` so both paths draw through the same code. Verified by full
+suite (84 engine test cases, including the new `canSeeHand` coverage) and by playing a complete
+game through the terminal client to its Forehead and Hidden rounds — own hand hidden while
+bidding blind, every other seat's hand shown by name in Forehead, nothing shown in Hidden, Normal
+rounds and spectator games pixel-identical to before.
 
 #### This is the one phase that changes play — say so
 
@@ -2399,7 +2426,7 @@ refactor, and could ship on its own.
    2b. old driving API goes private; duplicated loop deleted
 3. GameSetup + start(); validation consolidated; getStandings()              [no behaviour change] [DONE]
 4. cards by value; playCard returns an index; fixes retained-round aliasing  [no behaviour change] [DONE]
-5. Forehead/Hidden: BetContext.roundType, canSeeHand(), one strategy         [changes play]
+5. Forehead/Hidden: BetContext.roundType, canSeeHand(), one strategy         [changes play] [DONE]
 6. docs, version 4.0.0, submodule pin
 ```
 
