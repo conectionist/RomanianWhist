@@ -632,7 +632,7 @@ std::vector<Standing> GameEngine::getStandings() const
     standings.reserve(players.size());
 
     for(unsigned int i = 0 ; i < players.size() ; i++)
-        standings.push_back(Standing{ Seat{i}, players.at(i).getName(), players.at(i).getTotalScore() });
+        standings.push_back(Standing{ Seat{i}, players.at(i).getName(), players.at(i).getTotalScore(), 0u });
 
     // Stable, so seats level on points come out in seat order rather than in
     // whatever order the sort happened to leave them. std::sort would let the
@@ -643,6 +643,34 @@ std::vector<Standing> GameEngine::getStandings() const
                      {
                          return left.score > right.score;
                      });
+
+    // Competition ranking: a row ties with the one above it or takes the place
+    // its own index names, which is what skips the places a tie consumed. The
+    // running counter that suggests itself instead - place++ per row - is the
+    // dense version, and it hands the seat below a two-way tie for 1st a 2nd
+    // place that nobody came second in.
+    for(unsigned int i = 0 ; i < standings.size() ; i++)
+        standings.at(i).place = (i > 0 && standings.at(i).score == standings.at(i - 1).score)
+                                    ? standings.at(i - 1).place
+                                    : i + 1;
+
+    return standings;
+}
+
+std::vector<Standing> GameEngine::getWinners() const
+{
+    // Built from getStandings() rather than from a scan of its own: one
+    // definition of the top score, so the winners can never disagree with the
+    // rows the same client is about to render.
+    std::vector<Standing> standings = getStandings();
+
+    const auto firstLoser = std::find_if(standings.begin(), standings.end(),
+                                         [](const Standing& standing)
+                                         {
+                                             return standing.place != 1;
+                                         });
+
+    standings.erase(firstLoser, standings.end());
 
     return standings;
 }

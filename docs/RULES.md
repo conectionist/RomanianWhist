@@ -100,6 +100,17 @@ advance a streak nor break one.
 separate — see `GameEngine::getRoundScore()` / `getTotalScore()`, and the note in
 [README.md](../README.md#scores) about which is readable when.
 
+### Winning
+
+Highest total after the last round wins. **There is no tie-breaker** — seats level on points share
+the place, and a game can end in a two-, three- or four-way draw. Romanian Whist has no
+"most exact bids" or "best final round" rule to separate them, and the engine does not invent one.
+
+`GameEngine::getStandings()` ranks every seat with `Standing::place`, tied seats sharing a place and
+the places a tie consumes being skipped (50, 40, 40, 30 ranks 1, 2, 2, 4). `getWinners()` returns
+every seat on the top score, which is more than one row for a drawn game — a client that reads
+`getStandings().front()` instead names a single winner of a game nobody won alone.
+
 ## 9. Special rounds
 
 Two one-card round types change what a bidder may see:

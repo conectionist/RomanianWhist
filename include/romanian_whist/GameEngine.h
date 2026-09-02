@@ -102,6 +102,13 @@ struct Standing
     Seat seat;
     std::string name;
     int score;
+    // Competition ranking, from 1: seats on equal scores share a place, and the
+    // places they consume are skipped. Scores 50, 40, 40, 30 rank 1, 2, 2, 4 -
+    // there is no third place in that game. Ranking here rather than in each
+    // client is what stops one of them deciding a tie differently from the
+    // next; see getWinners() for the first-place case, which is the one clients
+    // ask for most and get wrong most.
+    unsigned int place;
 };
 
 class GameEngine
@@ -339,11 +346,28 @@ public:
     unsigned int getCurrentRoundTrickCount() const;
 
     // ---- scores ----
-    // The final (or running) standings, best first. Sorted stably, so seats on
-    // equal scores stay in seat order rather than in whatever order the sort
-    // happened to leave them - a tie that rendered differently between two runs
-    // of the same game would be a bug no test could reproduce.
+    // The final (or running) standings, best first, one row per seat and each
+    // row carrying its Standing::place. Sorted stably, so seats on equal scores
+    // stay in seat order rather than in whatever order the sort happened to
+    // leave them - a tie that rendered differently between two runs of the same
+    // game would be a bug no test could reproduce.
+    //
+    // Readable from the moment the game starts, like every other accessor here,
+    // so a live scoreboard is the same call as a final one. What separates them
+    // is getStatus(): only a Finished game's standings are final.
     std::vector<Standing> getStandings() const;
+
+    // Every seat sharing the top score - the game's winners, in seat order.
+    //
+    // Romanian Whist has no tie-breaker, so a tie at the top is shared and this
+    // returns more than one row; it is never empty for a started game. Prefer
+    // it to reading getStandings().front(), which quietly names one winner of a
+    // drawn game and is the way this gets written wrong.
+    //
+    // Like getStandings() it answers during a game too, where it means "who is
+    // currently leading" - a client announcing a *winner* checks that
+    // getStatus() is Finished first.
+    std::vector<Standing> getWinners() const;
 
     // getRoundScore() is what the current round is worth so far.
     // getTotalScore() is the *committed* total and does not include it until

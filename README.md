@@ -89,10 +89,10 @@ Releases are tagged, so pin one rather than tracking a branch:
 ```bash
 cd libs/RomanianWhistEngine
 git fetch --tags
-git checkout v4.0.0
+git checkout v4.1.0
 cd ../..
 git add libs/RomanianWhistEngine
-git commit -m "Update Romanian Whist engine to 4.0.0"
+git commit -m "Update Romanian Whist engine to 4.1.0"
 ```
 
 `git pull origin master` also works if you would rather track the tip. Either way, read
@@ -506,11 +506,21 @@ began, wants the round leader.
 
 ```cpp
 for(const Standing& standing : game.getStandings())   // best first
-    display(standing.name, standing.score);
+    display(standing.place, standing.name, standing.score);
+
+for(const Standing& winner : game.getWinners())       // every seat on the top score
+    announce(winner.name);
 
 display(game.getRoundScore(seat));    // what this round is worth so far
 display(game.getTotalScore(seat));    // the committed total
 ```
+
+`Standing::place` is a competition ranking: seats level on points share a place, and the places a
+tie consumes are skipped, so 50, 40, 40, 30 ranks 1, 2, 2, 4 and that game has no third place.
+Romanian Whist has no tie-breaker, so `getWinners()` returns a *list* — more than one row for a
+drawn game, and never empty for a started game. Reading `getStandings().front()` instead is the
+easy mistake: it names a single winner of a game two seats drew. Both read during a game too,
+where they mean "currently leading"; only a `Finished` game's standings are final.
 
 `getTotalScore()` does not include the current round until that round is committed. Inside
 `onRoundScored()` the two are "what this round was worth" and "the total it has not yet been added
