@@ -2,6 +2,7 @@
 #define BET_CONTEXT_H
 
 #include <romanian_whist/Card.h>
+#include <romanian_whist/RoundType.h>
 
 #include <optional>
 #include <vector>
@@ -28,6 +29,12 @@ struct BetContext
     // and empty for the final bidder when the bids so far already exceed the
     // trick count - no single bid can hit the total then.
     std::optional<unsigned int> forbiddenBet;
+
+    // Forehead and Hidden both mean the bidder cannot use `hand`'s contents to
+    // decide - the engine still hands over the real hand (it has no other one
+    // to give), but a strategy that reads it in either round type is bidding
+    // on information the round says it does not have.
+    RoundType roundType = RoundType::Normal;
 };
 
 } // namespace romanian_whist

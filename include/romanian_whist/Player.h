@@ -3,6 +3,7 @@
 
 #include <romanian_whist/Card.h>
 #include <romanian_whist/IMoveProvider.h>
+#include <romanian_whist/RoundType.h>
 
 #include <memory>
 #include <optional>
@@ -66,10 +67,12 @@ private:
                                  unsigned int tricksWon);
 
     // The hand is the player's own, so only the rest of the bidding context is
-    // passed in. `forbiddenBet` comes from GameEngine::getForbiddenBet().
+    // passed in. `forbiddenBet` comes from GameEngine::getForbiddenBet(),
+    // `roundType` from GameEngine::getCurrentRoundType().
     unsigned int getBet(std::optional<Card> trump,
                         bool isFirstPlayer,
-                        std::optional<unsigned int> forbiddenBet) const;
+                        std::optional<unsigned int> forbiddenBet,
+                        RoundType roundType) const;
 };
 
 } // namespace romanian_whist

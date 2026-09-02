@@ -6,7 +6,12 @@ namespace romanian_whist
 {
 unsigned int LowRiskStrategy::getBestBet(const BetContext &context)
 {
-    unsigned int bet = heuristics::countLikelyWinners(context.hand, context.trump);
+    // Forehead and Hidden both mean this hand cannot be read to bid on - there
+    // is nothing to count likely winners from, so bid nothing.
+    const bool blind = context.roundType == RoundType::Forehead ||
+                       context.roundType == RoundType::Hidden;
+
+    unsigned int bet = blind ? 0u : heuristics::countLikelyWinners(context.hand, context.trump);
 
     if(context.forbiddenBet && bet == *context.forbiddenBet)
     {

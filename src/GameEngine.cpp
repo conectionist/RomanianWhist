@@ -295,7 +295,8 @@ bool GameEngine::runBidding()
 
         // Asked fresh each time round: getForbiddenBet() only names a value
         // once everyone but the last player has bid.
-        const unsigned int bet = player.getBet(getCurrentTrumpCard(), i == 0, getForbiddenBet());
+        const unsigned int bet = player.getBet(getCurrentTrumpCard(), i == 0, getForbiddenBet(),
+                                               getCurrentRoundType());
 
         // The engine is the one asking now, so it is the one that has to judge
         // the answer. Legality used to live entirely in the providers, which is
@@ -766,6 +767,28 @@ RoundType GameEngine::getCurrentRoundType() const
     requireStarted();
 
     return scoreboard.getCurrentRound().getRoundType();
+}
+
+bool GameEngine::canSeeHand(Seat viewer, Seat holder) const
+{
+    requireStarted();
+
+    // Checked here rather than left to yield a confident answer about a seat
+    // that does not exist, which is how every other seat-taking accessor on
+    // this class behaves.
+    const unsigned int playerCount = players.size();
+
+    if(viewer.index >= playerCount || holder.index >= playerCount)
+        throw std::out_of_range("GameEngine::canSeeHand: seat out of range");
+
+    switch(getCurrentRoundType())
+    {
+        case RoundType::Forehead: return viewer != holder;
+        case RoundType::Hidden:   return false;
+        case RoundType::Normal:   break;
+    }
+
+    return viewer == holder;
 }
 
 bool GameEngine::cardBeats(const Card& candidate, const Card& currentBest, Suit leadSuit) const

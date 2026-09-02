@@ -20,6 +20,7 @@ add_executable(romanian_whist_engine_tests
     RandomPlayPropertyTests.cpp
     RoundHistoryTests.cpp
     TrickHeuristicsTests.cpp
+    LowRiskStrategyTests.cpp
     AiMoveProviderTests.cpp
 )
 

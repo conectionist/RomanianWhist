@@ -387,6 +387,13 @@ public:
     unsigned int getRoundCount() const;
     RoundType getCurrentRoundType() const;
 
+    // May `viewer` see `holder`'s hand in the current round? Normal: only your
+    // own. Forehead: everyone's but your own. Hidden: nobody's. This is not
+    // enforcement - getPlayers() and Player::getHand() stay public because the
+    // renderer needs them - it is the one place both clients ask, so they
+    // cannot disagree about the rule.
+    bool canSeeHand(Seat viewer, Seat holder) const;
+
     // ---- live round state ----
     // Whose turn it is; empty between turns. Engaged from just before a
     // provider is asked until just after its answer is recorded, so it is still
