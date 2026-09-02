@@ -181,8 +181,9 @@ int main()
 }
 ```
 
-> This snippet is compiled on every build, as `tests/ReadmeQuickStartTests.cpp`. If you change
-> one, change the other.
+> This snippet is compiled on every build, as `tests/ReadmeQuickStartTests.cpp` — and that
+> test reads this file back and fails if the two have drifted apart. Change one, change the
+> other; the suite will tell you if you forget.
 
 Replace a bot with your own `IMoveProvider` and you have a playable game. Everything below is
 detail on the four things that program does: set up, watch, decide, and read.

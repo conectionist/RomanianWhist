@@ -2396,7 +2396,10 @@ Two amendments to the phase's scope, both deliberate:
 - **The README quick start is compiled**, as `tests/ReadmeQuickStartTests.cpp`, which is engine
   code in a phase that promised none. The justification is the phase itself: the README went stale
   for a year across four API-breaking phases and nothing caught it, because nothing could. It
-  rides `WHIST_BUILD_TESTS`, so no consumer builds it.
+  rides `WHIST_BUILD_TESTS`, so no consumer builds it. A second case in the same file reads
+  `README.md` back off disk and diffs the printed snippet against the compiled one, so that
+  editing the README alone fails the suite — compiling a *copy* of the snippet would otherwise
+  have left the copy free to drift, which is the same hole one level down.
 
 Two documents were stale in ways this phase never anticipated, both fixed here:
 
