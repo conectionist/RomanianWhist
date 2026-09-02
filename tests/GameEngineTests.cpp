@@ -70,7 +70,9 @@ std::unique_ptr<GameEngine> startedGame(unsigned int count,
 // Every seat is scripted so the game is deterministic and its bids are known.
 std::unique_ptr<GameEngine> buildScriptedGame(std::vector<ScriptedMoveProvider*>& seats,
                                               unsigned int playerCount,
-                                              GameStructure structure = GameStructure::S_181)
+                                              GameStructure structure = GameStructure::S_181,
+                                              bool endWithForeheadAndHidden = false,
+                                              bool all1GamesAreForehead = false)
 {
     std::vector<std::unique_ptr<IMoveProvider>> providers;
 
@@ -82,7 +84,8 @@ std::unique_ptr<GameEngine> buildScriptedGame(std::vector<ScriptedMoveProvider*>
     }
 
     auto engine = std::make_unique<GameEngine>();
-    engine->start(test::buildSetup(structure, std::move(providers), 1u));
+    engine->start(test::buildSetup(structure, std::move(providers), 1u,
+                                   endWithForeheadAndHidden, all1GamesAreForehead));
 
     return engine;
 }
@@ -229,6 +232,7 @@ TEST_CASE("Round-scoped accessors throw before the game is set up", "[game-engin
     REQUIRE_THROWS_AS(engine.getCurrentTrickNumber(), std::logic_error);
     REQUIRE_THROWS_AS(engine.getBet(Seat{0}), std::logic_error);
     REQUIRE_THROWS_AS(engine.getTricksWon(Seat{0}), std::logic_error);
+    REQUIRE_THROWS_AS(engine.canSeeHand(Seat{0}, Seat{0}), std::logic_error);
 
     // These answer at any time, and isSetUp() is the one that says whether the
     // rest are safe to call yet.
@@ -314,6 +318,59 @@ TEST_CASE("GameEngine::getBiddingOrder counts round from the round leader", "[ga
     // leader, would still pass on round 0 alone.
     REQUIRE(checker.roundsChecked == engine->getRoundCount());
     REQUIRE_THROWS_AS(engine->getBiddingOrder(Seat{4}), std::out_of_range);
+}
+
+TEST_CASE("GameEngine::canSeeHand follows the round type", "[game-engine]")
+{
+    // all1GamesAreForehead and endWithForeheadAndHidden together put every
+    // RoundType this game knows about into one schedule: Normal (the 2..7/8/7..2
+    // block), Forehead (every 1-trick round) and Hidden (the very last round).
+    std::vector<ScriptedMoveProvider*> seats;
+    const auto engine = buildScriptedGame(seats, 4, GameStructure::S_181,
+                                          /*endWithForeheadAndHidden=*/true,
+                                          /*all1GamesAreForehead=*/true);
+
+    struct Checker : IGameObserver
+    {
+        unsigned int roundsChecked = 0;
+
+        void onRoundStarted(const GameEngine& engine) override
+        {
+            const unsigned int playerCount = engine.getPlayerCount();
+            const RoundType type = engine.getCurrentRoundType();
+
+            for(unsigned int v = 0 ; v < playerCount ; v++)
+            {
+                for(unsigned int h = 0 ; h < playerCount ; h++)
+                {
+                    const Seat viewer{v};
+                    const Seat holder{h};
+                    const bool sameSeat = viewer == holder;
+
+                    switch(type)
+                    {
+                        case RoundType::Forehead:
+                            REQUIRE(engine.canSeeHand(viewer, holder) == !sameSeat);
+                            break;
+                        case RoundType::Hidden:
+                            REQUIRE_FALSE(engine.canSeeHand(viewer, holder));
+                            break;
+                        case RoundType::Normal:
+                            REQUIRE(engine.canSeeHand(viewer, holder) == sameSeat);
+                            break;
+                    }
+                }
+            }
+
+            roundsChecked++;
+        }
+    };
+
+    Checker checker;
+    engine->addObserver(&checker);
+    engine->run();
+
+    REQUIRE(checker.roundsChecked == engine->getRoundCount());
 }
 
 TEST_CASE("GameEngine::start rejects impossible seat counts", "[game-engine]")

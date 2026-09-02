@@ -769,6 +769,20 @@ RoundType GameEngine::getCurrentRoundType() const
     return scoreboard.getCurrentRound().getRoundType();
 }
 
+bool GameEngine::canSeeHand(Seat viewer, Seat holder) const
+{
+    requireStarted();
+
+    switch(getCurrentRoundType())
+    {
+        case RoundType::Forehead: return viewer != holder;
+        case RoundType::Hidden:   return false;
+        case RoundType::Normal:   break;
+    }
+
+    return viewer == holder;
+}
+
 bool GameEngine::cardBeats(const Card& candidate, const Card& currentBest, Suit leadSuit) const
 {
     // The ranking itself lives on CardValidator, so that a strategy weighing up
