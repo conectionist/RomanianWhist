@@ -333,11 +333,21 @@ TEST_CASE("GameEngine::canSeeHand follows the round type", "[game-engine]")
     struct Checker : IGameObserver
     {
         unsigned int roundsChecked = 0;
+        unsigned int normalRounds = 0;
+        unsigned int foreheadRounds = 0;
+        unsigned int hiddenRounds = 0;
 
         void onRoundStarted(const GameEngine& engine) override
         {
             const unsigned int playerCount = engine.getPlayerCount();
             const RoundType type = engine.getCurrentRoundType();
+
+            switch(type)
+            {
+                case RoundType::Forehead: foreheadRounds++; break;
+                case RoundType::Hidden:   hiddenRounds++;   break;
+                case RoundType::Normal:   normalRounds++;   break;
+            }
 
             for(unsigned int v = 0 ; v < playerCount ; v++)
             {
@@ -371,6 +381,17 @@ TEST_CASE("GameEngine::canSeeHand follows the round type", "[game-engine]")
     engine->run();
 
     REQUIRE(checker.roundsChecked == engine->getRoundCount());
+
+    // Every assertion above sits inside a switch on the round type, so a
+    // schedule that stopped producing one of the three would silently drop that
+    // branch and leave the test green on the other two - forcing every round to
+    // Normal passes it. These three pin the coverage the comment claims.
+    REQUIRE(checker.normalRounds > 0);
+    REQUIRE(checker.foreheadRounds > 0);
+    REQUIRE(checker.hiddenRounds > 0);
+
+    REQUIRE_THROWS_AS(engine->canSeeHand(Seat{4}, Seat{0}), std::out_of_range);
+    REQUIRE_THROWS_AS(engine->canSeeHand(Seat{0}, Seat{4}), std::out_of_range);
 }
 
 TEST_CASE("GameEngine::start rejects impossible seat counts", "[game-engine]")

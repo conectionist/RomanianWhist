@@ -773,6 +773,14 @@ bool GameEngine::canSeeHand(Seat viewer, Seat holder) const
 {
     requireStarted();
 
+    // Checked here rather than left to yield a confident answer about a seat
+    // that does not exist, which is how every other seat-taking accessor on
+    // this class behaves.
+    const unsigned int playerCount = players.size();
+
+    if(viewer.index >= playerCount || holder.index >= playerCount)
+        throw std::out_of_range("GameEngine::canSeeHand: seat out of range");
+
     switch(getCurrentRoundType())
     {
         case RoundType::Forehead: return viewer != holder;

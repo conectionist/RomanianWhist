@@ -3,6 +3,7 @@
 
 #include <romanian_whist/Card.h>
 #include <romanian_whist/IMoveProvider.h>
+#include <romanian_whist/RoundType.h>
 
 #include <memory>
 #include <optional>
