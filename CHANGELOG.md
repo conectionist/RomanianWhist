@@ -3,6 +3,31 @@
 This project follows [Semantic Versioning](https://semver.org/). The version lives in
 `CMakeLists.txt` and reaches consumers as `romanian_whist::VersionString`.
 
+## 4.1.0
+
+**A drawn game has more than one winner.** The engine ranked the standings but never said who won,
+so every client decided that for itself — and the obvious way to decide it, reading the first row,
+quietly names one winner of a game two seats drew. Romanian Whist has no tie-breaker, so the answer
+is a list.
+
+Additive: no existing call changes behaviour, and `Standing` gains a field rather than losing one.
+
+### Added
+
+- `Standing::place` — a competition ranking, from 1. Seats level on points share a place and the
+  places a tie consumes are skipped, so 50, 40, 40, 30 ranks 1, 2, 2, 4. Ranking in the engine is
+  what stops one client deciding a tie differently from the next.
+- `GameEngine::getWinners()` — every seat on the top score, in seat order. More than one row for a
+  drawn game, never empty for a started game. Like `getStandings()` it answers during a game too,
+  where it means "currently leading"; a client announcing a *winner* checks `getStatus()` first.
+
+### Changed
+
+- `getStandings()` now fills `place` on every row. Existing readers of `seat`, `name` and `score`
+  are unaffected.
+- [docs/RULES.md](docs/RULES.md) §8 gains a **Winning** section: highest total wins, ties are
+  shared, and there is no tie-breaker.
+
 ## 4.0.0
 
 **The engine owns the game loop.** In 3.x a client wrote the loop itself out of engine

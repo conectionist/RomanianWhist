@@ -11,6 +11,7 @@
 
 #include <memory>
 #include <algorithm>
+#include <cstdint>
 #include <numeric>
 #include <stdexcept>
 #include <string>
@@ -574,6 +575,175 @@ TEST_CASE("GameEngine::getStandings carries the seat and sorts stably", "[game-e
         std::sort(seatsSeen.begin(), seatsSeen.end());
         REQUIRE(seatsSeen == std::vector<unsigned int>{ 0, 1, 2, 3 });
     }
+}
+
+TEST_CASE("getStandings places ties by competition ranking", "[game-engine]")
+{
+    // A ScriptedMoveProvider with an empty script bids the lowest legal bid and
+    // plays the first legal card, which is what makes the tie here designed
+    // rather than found: every seat bids 0 in the opening one-trick rounds, so
+    // exactly one seat takes the trick and scores -1 while the other three bid
+    // exactly and score 5. The deal decides WHICH seat is the odd one out - the
+    // seed is arbitrary - but never how many there are, so the shape of the
+    // standings below holds for every seed.
+    std::vector<std::unique_ptr<IMoveProvider>> providers;
+
+    for(unsigned int i = 0 ; i < 4 ; i++)
+        providers.push_back(std::make_unique<ScriptedMoveProvider>());
+
+    GameEngine engine;
+    engine.start(buildSetup(GameStructure::S_181, std::move(providers), 7u));
+
+    SECTION("a level table is one four-way tie for first")
+    {
+        for(const Standing& standing : engine.getStandings())
+            REQUIRE(standing.place == 1);
+    }
+
+    SECTION("a three-way tie for first leaves nobody second or third")
+    {
+        engine.playRound();
+
+        const std::vector<Standing> standings = engine.getStandings();
+        REQUIRE(standings.size() == 4);
+
+        // 5, 5, 5, -1 ranks 1, 1, 1, 4. The dense ranking that a running
+        // place++ per row produces would say 1, 2, 3, 4 and put two seats on
+        // the same score in different places; the off-by-one version of this
+        // loop, numbering from the tie rather than from the index, would say
+        // 1, 1, 1, 2 and hand the last seat a second place nobody came second
+        // in.
+        REQUIRE(standings[0].place == 1);
+        REQUIRE(standings[1].place == 1);
+        REQUIRE(standings[2].place == 1);
+        REQUIRE(standings[3].place == 4);
+
+        REQUIRE(standings[0].score == 5);
+        REQUIRE(standings[1].score == 5);
+        REQUIRE(standings[2].score == 5);
+        REQUIRE(standings[3].score == -1);
+
+        // The three that tied stay in seat order, which is what the stable sort
+        // is for - a client rendering them has to get the same order twice.
+        REQUIRE(standings[0].seat.index < standings[1].seat.index);
+        REQUIRE(standings[1].seat.index < standings[2].seat.index);
+    }
+}
+
+TEST_CASE("getWinners returns every seat on the top score", "[game-engine]")
+{
+    std::vector<std::unique_ptr<IMoveProvider>> providers;
+
+    for(unsigned int i = 0 ; i < 4 ; i++)
+        providers.push_back(std::make_unique<ScriptedMoveProvider>());
+
+    GameEngine engine;
+    engine.start(buildSetup(GameStructure::S_181, std::move(providers), 7u));
+
+    SECTION("a drawn game names every winner, not the first of them")
+    {
+        // Same three-way tie as above. Reading getStandings().front() here -
+        // the way this gets written by hand - would name one winner of a game
+        // three seats drew, which is the whole reason getWinners() exists.
+        engine.playRound();
+
+        const std::vector<Standing> winners = engine.getWinners();
+
+        REQUIRE(winners.size() == 3);
+
+        for(const Standing& winner : winners)
+        {
+            REQUIRE(winner.place == 1);
+            REQUIRE(winner.score == 5);
+        }
+
+        REQUIRE(winners[0].seat.index < winners[1].seat.index);
+        REQUIRE(winners[1].seat.index < winners[2].seat.index);
+    }
+
+    SECTION("it agrees with the standings it is drawn from, all game long")
+    {
+        // Checked every round rather than at the end alone: getWinners() reads
+        // during a game too, where it means "currently leading", and the two
+        // views drifting apart mid-game is exactly what a live scoreboard would
+        // show.
+        while(engine.getStatus() == GameStatus::InProgress)
+        {
+            engine.playRound();
+
+            const std::vector<Standing> standings = engine.getStandings();
+            const std::vector<Standing> winners = engine.getWinners();
+
+            REQUIRE_FALSE(winners.empty());
+            REQUIRE(winners.size() <= standings.size());
+
+            const int topScore = standings.front().score;
+
+            for(const Standing& winner : winners)
+                REQUIRE(winner.score == topScore);
+
+            // Nobody outside the returned set shares the top score, which is
+            // the half a "every winner has the top score" check alone misses.
+            for(std::size_t i = winners.size() ; i < standings.size() ; i++)
+                REQUIRE(standings[i].score < topScore);
+        }
+
+        REQUIRE(engine.getStatus() == GameStatus::Finished);
+    }
+}
+
+TEST_CASE("places stay consistent with the scores they rank", "[game-engine]")
+{
+    // The properties the ranking has to satisfy whatever the scores turn out to
+    // be, over games nobody designed: equal scores share a place, a lower score
+    // takes a strictly later one, and a place is either its row's index or the
+    // place of the tie it joined. The designed cases above pin the two shapes
+    // that matter; this is what would catch a ranking that happens to be right
+    // for those and wrong elsewhere.
+    //
+    // Ties are common in the early one-trick rounds but not guaranteed at the
+    // end of any particular game, so the loop counts them and asserts it
+    // actually saw some - a property test that only ever ranked distinct scores
+    // would pass without exercising a single line of the tie handling.
+    unsigned int tiesSeen = 0;
+
+    for(std::uint32_t seed = 1 ; seed <= 25 ; seed++)
+    {
+        INFO("seed " << seed);
+
+        std::vector<std::unique_ptr<IMoveProvider>> providers;
+
+        for(unsigned int i = 0 ; i < 4 ; i++)
+            providers.push_back(std::make_unique<AiMoveProvider>(std::make_unique<FirstCardStrategy>()));
+
+        GameEngine engine;
+        engine.start(buildSetup(GameStructure::S_181, std::move(providers), seed));
+
+        while(engine.getStatus() == GameStatus::InProgress)
+        {
+            engine.playRound();
+
+            const std::vector<Standing> standings = engine.getStandings();
+
+            REQUIRE(standings.front().place == 1);
+
+            for(std::size_t i = 1 ; i < standings.size() ; i++)
+            {
+                if(standings[i].score == standings[i - 1].score)
+                {
+                    REQUIRE(standings[i].place == standings[i - 1].place);
+                    tiesSeen++;
+                }
+                else
+                {
+                    REQUIRE(standings[i].score < standings[i - 1].score);
+                    REQUIRE(standings[i].place == i + 1);
+                }
+            }
+        }
+    }
+
+    REQUIRE(tiesSeen > 0);
 }
 
 TEST_CASE("getRoundScore is what the round is worth, getTotalScore what is committed", "[game-engine]")
