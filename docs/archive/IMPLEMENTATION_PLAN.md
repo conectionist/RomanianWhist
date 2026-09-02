@@ -1,10 +1,17 @@
 # Romanian Whist Implementation Plan
 
-> **Partly superseded by [ENGINE_V4_PLAN.md](ENGINE_V4_PLAN.md).** The rule decisions below still
-> stand and are the authority on how the game is played. The architecture notes and the remaining
-> gaps do not: v4 moves the game loop out of the client and into the engine, which is what finally
-> makes the round types enforceable and the loop testable. Read this document for *what the rules
-> are*, and the v4 plan for *where the code is going*.
+> **Archived. Complete, and not a roadmap.** This is the plan that took the terminal prototype to
+> engine 3.0.0, kept as a record of how the project was built. Everything it asks for was done,
+> including the three gaps it left open — see the notes inline.
+>
+> It is no longer the authority on anything:
+>
+> - **The rules** it decided moved to [docs/RULES.md](../RULES.md), which states them alongside
+>   the code that implements each one. That is the document to read, and the one to keep correct.
+> - **The architecture** it describes was replaced by v4 ([ENGINE_V4_PLAN.md](../../ENGINE_V4_PLAN.md)),
+>   which moved the game loop out of the client and into the engine. Several statements below were
+>   true when written and are not now; they are marked rather than corrected, because correcting a
+>   record is how you lose it.
 
 ## Goal
 
@@ -22,21 +29,23 @@ The game already runs end-to-end in AI-vs-AI mode. The following are fully imple
 - `Scoreboard`: generates the complete round schedule for both `1-8-1` and `8-1-8`, advances rounds, detects game end.
 - `GameEngine`: owns players, deck, scoreboard; wires dealing, betting, card play, trick winner logic, scoring.
 - `TerminalRomanianWhist`: full game loop — shuffle, deal, betting, trick play, scoring, final standings.
+  *(No longer true. v4 phase 2 moved that loop into `GameEngine::run()`/`playRound()`;
+  `TerminalRomanianWhist` is now an `IGameObserver` the engine reports to.)*
 - `CardValidator`: enforces follow-suit → trump → anything priority.
 - Bidding validation: range `[0, trick count]`, plus the final-bidder restriction via `GameEngine::getForbiddenBet()` / `isBetLegal()`, carried to players in `BetContext::forbiddenBet`.
 - Trick winner logic: highest trump wins; otherwise highest lead-suit card wins.
 - Scoring: `5 + bid` on exact, `-abs(bid - actual)` on miss, streak bonuses/penalties at 5 consecutive wins/losses (excluding 1-card rounds).
 
-Remaining gaps (all three are addressed by [ENGINE_V4_PLAN.md](ENGINE_V4_PLAN.md)):
+Remaining gaps — **all three closed** by [ENGINE_V4_PLAN.md](../../ENGINE_V4_PLAN.md):
 
-- `initialize()` is disabled; the game starts with a hardcoded test setup.
-  — v4 phase 3 replaces setup entirely with a validated `GameEngine::start(GameSetup)`.
-- `RoundType::Forehead` and `RoundType::Hidden` are stored in the schedule but the UI ignores them.
-  — this cannot be fixed while the *client* builds the bidding prompt; v4 phase 5 enforces it in
-  the engine once the engine owns the loop.
-- No automated tests.
-  — v4 phase 0 adds the test target, unit tests and golden full-game tests, and is a prerequisite
-  for every phase after it.
+- ~~`initialize()` is disabled; the game starts with a hardcoded test setup.~~
+  **Closed in v4 phase 3.** Setup is one validated `GameEngine::start(GameSetup)`.
+- ~~`RoundType::Forehead` and `RoundType::Hidden` are stored in the schedule but the UI ignores
+  them.~~ **Closed in v4 phase 5.** It could not be fixed while the *client* built the bidding
+  prompt; once the engine owned the loop it gained the hook. `BetContext::roundType` tells a
+  bidder which round they are in and `GameEngine::canSeeHand()` states the visibility rule.
+- ~~No automated tests.~~ **Closed in v4 phase 0.** A Catch2 target with unit tests, golden
+  full-game tests, property tests and an observer suite, run on Linux, Windows and macOS in CI.
 
 ## Rule Decisions (All Confirmed)
 
@@ -77,7 +86,10 @@ Remaining gaps (all three are addressed by [ENGINE_V4_PLAN.md](ENGINE_V4_PLAN.md
 
 ## Remaining Implementation
 
-### Phase 9: Special Rounds
+> **Both phases below are done.** Phase 9 landed in v4 phase 5, phase 10 in v4 phase 0. Kept for
+> the record; nothing here is outstanding.
+
+### Phase 9: Special Rounds — done
 
 - During a **Forehead** round: show all other players' cards to everyone, but hide the active player's card from themselves before betting.
 - During a **Hidden** round: hide the active player's card from all players before betting.
@@ -88,9 +100,10 @@ Expected result:
 
 - Optional special one-card rounds work consistently with the normal game.
 
-### Phase 10: Tests And Verification
+### Phase 10: Tests And Verification — done
 
 - Add a `Makefile` or build script.
+  *(Done differently: CMake presets — `cmake --preset default`, `ctest --preset default`.)*
 - Add unit tests for:
   - Deck composition by player count.
   - Round schedule generation for both `1-8-1` and `8-1-8`.
@@ -106,9 +119,12 @@ Expected result:
 
 ## Design Notes
 
-- Keep UI input/output in `TerminalRomanianWhist`.
+- Keep UI input/output in `TerminalRomanianWhist`. *(Still holds — it is the client's whole job
+  now that the engine owns the loop.)*
 - Keep rule decisions in `GameEngine` or dedicated rule helpers, not scattered through terminal prompts.
 - Player name is currently used as the key in `Round::bets`. Ensure names are validated as unique in Phase 4.
+  *(Both halves resolved elsewhere: v4 phase 1 rekeyed `Round::bets` by `Seat`, and v4 phase 3's
+  `GameSetup` validation rejects duplicate names at `start()`.)*
 - Keep `Round` focused on round state, not terminal behavior.
 - Keep `Scoreboard` focused on schedule and scores.
 
@@ -123,3 +139,6 @@ The implementation is complete when:
 - The match ends automatically after the final round.
 - Final standings are displayed.
 - The code has basic automated coverage for core rules.
+
+All of the above were met at engine 3.0.0, except automated coverage, which arrived with v4
+phase 0.

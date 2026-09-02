@@ -433,7 +433,10 @@ The last row is the point.
 
 ## 11. Reference files
 
-- [ENGINE_V4_PLAN.md](ENGINE_V4_PLAN.md) — the engine this is written against; §3 is the API surface.
+- [README.md](README.md) — the API surface this is written against. "Threading, stopping, and
+  failure" is the contract §3 and §6 below work through; "Watching a game" is the callback order.
+- [ENGINE_V4_PLAN.md](ENGINE_V4_PLAN.md) — why the engine has that shape; §3 is the design
+  rationale behind the README's surface.
 - `../romanian_whist_terminal/src/GameView.{h,cpp}` — `GameSnapshot` and `refreshFromEngine()`,
   reused here (see §9).
 - `../romanian_whist_terminal/src/TerminalRomanianWhist.cpp` — the post-v4 observer shape, in its

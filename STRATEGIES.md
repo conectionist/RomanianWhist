@@ -2,14 +2,7 @@
 
 The engine ships four `IStrategy` implementations. This document covers what each one
 does, how they compare, and where they fall down. For the interface itself, see
-[README.md](README.md#connecting-your-interface).
-
-> **Describes v3.** The strategies' *reasoning* is unaffected by
-> [ENGINE_V4_PLAN.md](ENGINE_V4_PLAN.md), but two mechanical details in
-> [Writing your own](#writing-your-own) change: v4 phase 4 passes cards by value, so a strategy
-> returns `std::optional<Card>` rather than a `Card*` from `context.hand`, and phase 5 may hand
-> a strategy an **empty** hand in Forehead and Hidden rounds, where `context.handSize` — not
-> `hand.size()` — is the legal bid range.
+[README.md](README.md#supplying-moves--imoveprovider).
 
 | Strategy | Header | Bids | Plays |
 |---|---|---|---|
@@ -90,7 +83,7 @@ if trump length > 2:
 return min(winners, hand.size())
 ```
 
-In a no-trump round (`trump == nullptr`, the 8-card rounds) only aces count.
+In a no-trump round (an empty `trump`, the 8-card rounds) only aces count.
 
 If that number is the one the final-bidder rule bars, it steps **down** rather than up.
 Shedding one trick it expected to win is something a ducking hand can usually manage;
@@ -288,6 +281,12 @@ could win, and never got stranded as the last card. That is the entire strategy 
 
 ## Measured behaviour
 
+> **Measured on engine 3.0.0, and not re-run against 4.0.0.** The numbers below predate the
+> Forehead and Hidden rounds, in which `LowRiskStrategy` now bids 0 rather than counting
+> winners. That moves two rounds per game at most, and only the appended ones — but it does
+> move them, so treat these as the shape of each strategy rather than as figures that
+> reproduce exactly.
+
 200 full 1-8-1 games per line-up, four bots, played headless. "tricks/round" is pinned by
 arithmetic: the four seats always share out the round's tricks between them, so across the
 1-8-1 schedule the table average is ~0.92 whatever anyone does. Only the spread is a
@@ -356,17 +355,32 @@ class MyStrategy : public romanian_whist::IStrategy
 public:
     unsigned int getBestBet(const romanian_whist::BetContext& context) override
     {
-        // Honour *context.forbiddenBet whenever it is set and the bid is legal.
-        return 0;
+        // A Forehead or Hidden round says this hand may not be read to bid on,
+        // so there is nothing to count and the bid is 0.
+        unsigned int bet =
+            context.roundType == romanian_whist::RoundType::Normal
+                ? romanian_whist::heuristics::countLikelyWinners(context.hand, context.trump)
+                : 0u;
+
+        // The barred bid applies to every round, blind ones included, and the
+        // engine throws std::logic_error on it - so step off it last, after
+        // every other consideration has had its say. Stepping down from 0 is
+        // not an option, and a round always has at least one trick, so 1 is
+        // always legal there.
+        if(context.forbiddenBet && bet == *context.forbiddenBet)
+            bet = (bet == 0u) ? 1u : bet - 1u;
+
+        return bet;
     }
 
-    romanian_whist::Card* getBestChoice(const romanian_whist::PlayContext& context) override
+    std::optional<romanian_whist::Card> getBestChoice(
+        const romanian_whist::PlayContext& context) override
     {
         // cardValidator is inherited from IStrategy.
         const auto legal = cardValidator.getLegalCards(context.hand, context.trump, context.leadSuit);
 
         if(legal.empty())
-            return nullptr;
+            return std::nullopt;
 
         return romanian_whist::heuristics::chooseDuckingCard(context, legal);
     }
@@ -375,15 +389,24 @@ public:
 
 Three things to get right:
 
-1. **Return a pointer from `context.hand`,** never a copy. `Player::playCard` removes the
-   played card by identity.
-   *(v4 phase 4 removes this rule entirely — cards are passed by value and you return
-   `std::optional<Card>`. It is the subtlest rule here and the reason the phase exists.)*
-2. **Handle `trump == nullptr`.** The 8-card rounds have no trump.
-   *(v4 phase 4: `std::optional<Card>`, so check `has_value()`.)*
-3. **Guard the empty case** and return `nullptr`, which callers may treat as an error.
-   *(v4 phase 4: `std::nullopt`. Note that from phase 5 an empty hand is also a normal state
-   during bidding in Forehead and Hidden rounds — see the note at the top.)*
+1. **Return a card, not a position.** Strategies reason in cards; `AiMoveProvider` finds the
+   chosen card in the hand and hands the engine the index. You never see that index, and you
+   never need to — but it does mean the card you return must be one that is actually in
+   `context.hand`.
+2. **Handle an empty `context.trump`.** The 8-card rounds have no trump, and `std::optional`
+   is how that is said. Everything in `TrickHeuristics` takes it in that form already.
+3. **Guard the empty case** and return `std::nullopt`, which the engine treats as "no legal
+   play" — an error, not a pass.
+
+And one that is easy to miss:
+
+4. **Check `context.roundType` in `getBestBet`.** In a Forehead or Hidden round the engine
+   still hands you the **real** hand — it has no other one to give — but the round says the
+   bidder cannot see it. A strategy that reads it anyway is bidding on information it is not
+   supposed to have. `LowRiskStrategy::getBestBet` (`src/strategies/LowRiskStrategy.cpp`) is
+   the one bundled strategy this affects, and it bids 0 rather than counting winners — then
+   still steps to 1 if 0 is the barred bid, because a blind round bars a bid like any other.
+   The other three never read the hand to bid, so they need no guard.
 
 Both `getBestBet` and `getBestChoice` are pure functions of their arguments, so a
 deterministic strategy can be tested without standing up a `GameEngine` at all.

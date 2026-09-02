@@ -22,6 +22,7 @@ add_executable(romanian_whist_engine_tests
     TrickHeuristicsTests.cpp
     LowRiskStrategyTests.cpp
     AiMoveProviderTests.cpp
+    ReadmeQuickStartTests.cpp
 )
 
 target_link_libraries(romanian_whist_engine_tests PRIVATE
@@ -42,6 +43,15 @@ target_compile_features(romanian_whist_engine_tests PRIVATE cxx_std_20)
 # catch_tostring.hpp, which catch_test_macros.hpp already includes.
 target_compile_definitions(romanian_whist_engine_tests PRIVATE
     CATCH_CONFIG_ENABLE_OPTIONAL_STRINGMAKER
+)
+
+# ReadmeQuickStartTests compares the snippet printed in README.md against the
+# copy it compiles, so it needs both files at run time. Tests are only built
+# when this project is top level, so these always point at the source tree the
+# build was configured from.
+target_compile_definitions(romanian_whist_engine_tests PRIVATE
+    WHIST_README_PATH="${PROJECT_SOURCE_DIR}/README.md"
+    WHIST_QUICKSTART_TEST_PATH="${CMAKE_CURRENT_SOURCE_DIR}/ReadmeQuickStartTests.cpp"
 )
 
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
