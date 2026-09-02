@@ -30,7 +30,7 @@ component most likely to contain a bug is currently the one component that is st
 untestable. The engine has no automated tests at all today.
 
 **Rules that need the loop have nowhere to live.** `RoundType::Forehead` and `RoundType::Hidden`
-are stored but ignored — `IMPLEMENTATION_PLAN.md` lists this as an open gap. It has to be a gap,
+are stored but ignored — `IMPLEMENTATION_PLAN.md` (now `docs/archive/`) lists this as an open gap. It has to be a gap,
 because the *client* assembles the bidding prompt: `Player::getBet` is called from the client's
 loop, so the engine has no hook at which to say a round is played blind, and no place to put the
 rule about who may see whose cards. Once it owns the loop it has both (§3.6). Note this is about
@@ -2261,7 +2261,7 @@ since those touched engine code.
 
 ### Phase 5 — Forehead and Hidden [DONE]
 
-Closes the gap `IMPLEMENTATION_PLAN.md` records. See §3.6 for why this is far smaller than it
+Closes the gap `IMPLEMENTATION_PLAN.md` (now `docs/archive/`) records. See §3.6 for why this is far smaller than it
 first looks, and for what it deliberately does not do.
 
 1. Add `RoundType roundType` to `BetContext` — **at the end of the struct** (§3.6). This is not a
@@ -2326,7 +2326,7 @@ output. Two things keep that honest:
   desynchronises its generator for every round after. With no RNG strategy in the golden games,
   the difference stays where it belongs and the eye can check it.
 
-### Phase 6 — Documentation and release [NOT STARTED]
+### Phase 6 — Documentation and release [DONE]
 
 Nothing is *decided* here — the contracts were settled in §3.8 and Phase 2. This phase writes
 them where a client author will find them.
@@ -2427,7 +2427,7 @@ refactor, and could ship on its own.
 3. GameSetup + start(); validation consolidated; getStandings()              [no behaviour change] [DONE]
 4. cards by value; playCard returns an index; fixes retained-round aliasing  [no behaviour change] [DONE]
 5. Forehead/Hidden: BetContext.roundType, canSeeHand(), one strategy         [changes play] [DONE]
-6. docs, version 4.0.0, submodule pin
+6. docs, version 4.0.0, submodule pin                                        [DONE]
 ```
 
 **Phases 0-4 leave the golden scores byte-identical**, and a moved score in any of them means
