@@ -1,7 +1,8 @@
 # Qt desktop client, on the v4 engine
 
 A design sketch for a Qt 6 / C++ GUI client for Romanian Whist, written against the engine as it
-exists *after* [ENGINE_V4_PLAN.md](ENGINE_V4_PLAN.md).
+exists after [ENGINE_V4_PLAN.md](ENGINE_V4_PLAN.md) — which has now landed in full. The engine is
+at 4.1.0 and every prerequisite below is met, so this is buildable today.
 
 > **This document belongs in the Qt client's own repository once that exists.** It lives here for
 > now because it depends on the v4 plan and needs to sit beside it. Move it when the repo is
@@ -11,18 +12,19 @@ exists *after* [ENGINE_V4_PLAN.md](ENGINE_V4_PLAN.md).
 
 ## 1. Prerequisites
 
-**Do not start this before v4 phase 3 lands.** The client is built around `IGameObserver` and
-`GameEngine::run()`, neither of which exists in v3. Starting earlier means writing the trick loop
-by hand and then deleting it — the exact duplication the refactor exists to prevent.
+**All met.** This section used to say "do not start before v4 phase 3 lands". Phases 0-6 all
+landed, the engine shipped 4.0.0 and is now at **4.1.0**, so nothing here is waiting on the engine
+any more. What each phase gave this client, for orientation:
 
-| v4 phase | Why this client needs it |
+| v4 phase | What this client gets from it |
 |---|---|
-| 0 — tests | Not strictly required, but the client is only as trustworthy as the engine under it |
-| 1 — seats | `Seat` is the identity used throughout the UI; iterators would be unusable here |
-| 2 — loop + observer | **Load-bearing.** The entire design is `IGameObserver` |
-| 3 — `start(GameSetup)` | Setup dialog builds a `GameSetup` directly |
-| 4 — cards by value | Strongly desirable: snapshots cross a thread boundary, and copying values is trivial where copying `Card*` is a bug |
-| 5 — Forehead/Hidden | Only needed for those round types to render correctly |
+| 0 — tests | The engine under the GUI is pinned by a Catch2 suite |
+| 1 — seats | `Seat` is the identity used throughout the UI. Note it is a **struct with an explicit constructor**, not an integer: `Seat{i}` to build one, `seat.index` to read one |
+| 2 — loop + observer | **Load-bearing.** The entire design is `IGameObserver` + `run()` |
+| 3 — `start(GameSetup)` | Setup dialog builds a `GameSetup` directly. `shuffleSeed` came with it, which makes a reproducible deal a one-line debugging aid |
+| 4 — cards by value | `CardValidator::getLegalCards(hand, trump, leadSuit)` and `PlayContext::hand` are values, so a snapshot copy is trivial where copying `Card*` was a bug |
+| 5 — Forehead/Hidden | `canSeeHand()` and `RoundType`, which the table and the bid prompt both need |
+| 4.1.0 (post-plan) | `Standing::place` and `getWinners()` — the engine ranks the standings, so no client decides a tie for itself |
 
 Repository layout follows `romanian_whist_terminal`: the engine as a git submodule at
 `libs/RomanianWhistEngine`, consumed with `add_subdirectory` and linked as `RomanianWhist::engine`.
@@ -32,14 +34,19 @@ Qt arrives via `find_package(Qt6 REQUIRED COMPONENTS Widgets)`.
 
 ## 2. The core constraint
 
-**The Qt client is architecturally the web backend, not the terminal.**
+**The Qt client is architecturally the *planned* web backend, not the terminal.**
+
+The web backend named throughout this document **does not exist yet** — see
+[ENGINE_V4_PLAN.md](ENGINE_V4_PLAN.md) §1. Where the text below compares against it, read that as
+"the shape the two share", not as code to go and copy. The Qt client will be the first client to
+run the engine off the UI thread, and so the first to find out where this is wrong.
 
 The terminal can let the engine block, because its "UI" is a blocking `std::cin` — when
 `ConsoleMoveProvider` waits for input, there is nothing else the process needs to be doing. Qt has
 no such luxury: `engine.run()` on the GUI thread would freeze the event loop, and the window would
 stop repainting until the game ended.
 
-So the Qt client needs what the web backend needs:
+So the Qt client needs what a web backend would need:
 
 1. The engine on a **worker thread**.
 2. An **observer** that marshals events out to the GUI thread.
@@ -87,47 +94,111 @@ anything the engine owns. Signal payloads must be self-contained values.
 Lives on the game thread. Every method runs there.
 
 ```cpp
+// This client's own pacing knobs. The terminal's Pacer (src/Pacer.h) is a class
+// with beat()/trickPause()/roundPause() and a skip flag, not an options struct -
+// the delays are the part worth copying, not the type.
+struct Pacing
+{
+    std::chrono::milliseconds beat{450};
+    std::chrono::milliseconds trickDwell{1200};
+};
+
 class GameBridge : public QObject, public romanian_whist::IGameObserver
 {
     Q_OBJECT
 public:
-    explicit GameBridge(int humanSeat, PacingOptions pacing);
+    explicit GameBridge(Seat humanSeat, Pacing pacing);
 
     // ---- IGameObserver: all called on the GAME thread ----
+    // The engine declares thirteen callbacks; these are the ones this client
+    // acts on. The rest stay defaulted no-ops.
+
+    // Fires while the engine is still idle - set up but not yet dealt. The one
+    // callback from which run() may legally be called (see section 5).
+    void onGameStarted(const GameEngine& e) override { publish(e); }
+
     void onRoundStarted(const GameEngine& e) override { publish(e); }
+
+    // Whose turn it is to bid. Drives the "waiting on Ana" indicator; the human
+    // seat's own prompt comes from QtMoveProvider, not from here.
+    void onBetRequested(const GameEngine& e, Seat seat) override
+    {
+        publish(e);
+        emit turnChanged(seat.index);
+    }
+
     void onBetPlaced(const GameEngine& e, Seat seat, unsigned int bet) override
     {
         publish(e);
-        emit betPlaced(seat, bet);
-        if(static_cast<int>(seat) != humanSeat) pace(pacing.beat);
+        emit betPlaced(seat.index, bet);
+        if(seat != humanSeat) pace(pacing.beat);
     }
     void onBettingComplete(const GameEngine& e) override { publish(e); pace(pacing.beat); }
+
+    void onTrickStarted(const GameEngine& e, unsigned int trickNumber, Seat leader) override
+    {
+        publish(e);
+        emit trickStarted(trickNumber, leader.index);
+    }
+
+    void onCardRequested(const GameEngine& e, Seat seat) override
+    {
+        publish(e);
+        emit turnChanged(seat.index);
+    }
+
     void onCardPlayed(const GameEngine& e, Seat seat, const Card& card) override
     {
         publish(e);
-        emit cardPlayed(seat, card);
-        if(static_cast<int>(seat) != humanSeat) pace(pacing.beat);
+        emit cardPlayed(seat.index, card);
+        if(seat != humanSeat) pace(pacing.beat);
     }
     void onTrickWon(const GameEngine& e, Seat seat, unsigned int trickNumber) override
     {
         publish(e);
-        emit trickWon(seat, trickNumber);
+        emit trickWon(seat.index, trickNumber);
         pace(pacing.trickDwell);
     }
     void onRoundScored(const GameEngine& e) override { publish(e); emit roundScored(); }
-    void onGameOver(const GameEngine& e) override { emit gameOver(e.getStandings()); }
+    void onRoundComplete(const GameEngine& e) override { publish(e); pace(pacing.trickDwell); }
+
+    // Publish first: the final state is what the game-over dialog is drawn over.
+    // getWinners() rather than standings.front() - a drawn game has more than
+    // one winner, and the engine is what decides that (4.1.0).
+    void onGameOver(const GameEngine& e) override
+    {
+        publish(e);
+        emit gameOver(e.getStandings(), e.getWinners());
+    }
+
+    // requestStop() was honoured. This, NOT onGameOver, is what a window closed
+    // mid-game produces - see section 6. The round it landed in is left
+    // unscored, so there is nothing to announce; the window is closing anyway.
+    void onGameStopped(const GameEngine&) override { emit gameStopped(); }
 
 signals:
     void stateChanged(GameSnapshot snapshot);      // BY VALUE - crosses a thread boundary
+    void turnChanged(unsigned int seat);
     void betPlaced(unsigned int seat, unsigned int bet);
+    void trickStarted(unsigned int trickNumber, unsigned int leader);
     void cardPlayed(unsigned int seat, romanian_whist::Card card);
     void trickWon(unsigned int seat, unsigned int trickNumber);
     void roundScored();
-    void gameOver(std::vector<romanian_whist::Standing> standings);
+    void gameOver(std::vector<romanian_whist::Standing> standings,
+                  std::vector<romanian_whist::Standing> winners);
+    void gameStopped();
 
-    // Raised by QtMoveProvider, which has no signals of its own.
+    // Raised by QtMoveProvider through the forwarders below, since it has no
+    // signals of its own.
     void betRequested(BetPrompt prompt);
     void cardRequested(PlayPrompt prompt);
+
+public:
+    // QtMoveProvider is not a QObject and signals are protected, so
+    // `emit provider->bridge->betRequested(...)` will not compile. These are
+    // the seam. Both are called on the GAME thread, from inside the provider.
+    void raiseBetRequested(BetPrompt prompt) { emit betRequested(std::move(prompt)); }
+    void raiseCardRequested(PlayPrompt prompt) { emit cardRequested(std::move(prompt)); }
 
 private:
     void publish(const GameEngine& engine)
@@ -141,17 +212,24 @@ private:
 
     void pace(std::chrono::milliseconds delay);    // interruptible - see section 6
 
-    int humanSeat;
-    PacingOptions pacing;
+    Seat humanSeat;
+    Pacing pacing;
 };
 ```
 
+**`Seat` is a struct, not an integer.** `Seat{i}` builds one, `seat.index` reads one, and `==` /
+`!=` compare them. It has **no default constructor**, so it can never be a queued signal payload —
+which is why every signal above carries `unsigned int seat` and every callback body spells
+`seat.index`. Comparing seats (`seat != humanSeat`) is fine and clearer than comparing indices.
+
 Because `GameBridge` has affinity to the game thread and `MainWindow` to the GUI thread, Qt's
-default `AutoConnection` resolves to `QueuedConnection` and marshals for you. That is the Qt
-equivalent of the web backend's `queueInLoop`.
+default `AutoConnection` resolves to `QueuedConnection` and marshals for you — the same job a web
+backend's event-loop post would do.
 
 `pace()` inside a callback is deliberate, and mirrors the terminal's `Pacer`: blocking the observer
-pauses the game, which is exactly what makes bot turns watchable.
+pauses the game, which is exactly what makes bot turns watchable. One note carried over from the
+v4 plan: the terminal found that `Pacer::resetSkip()` belongs at the end of `onBettingComplete`,
+not in `onRoundStarted`. If this client grows a skip key, it inherits that.
 
 ### 4.2 `QtMoveProvider` — the blocking seam
 
@@ -168,12 +246,21 @@ public:
     unsigned int makeBet(const BetContext& context) override
     {
         std::unique_lock lock(mutex);
-        emit bridge->betRequested(BetPrompt{ context.handSize,
-                                             context.forbiddenBet,
-                                             context.roundType,
-                                             snapshotHand(context.hand) });
-        cv.wait(lock, [this]{ return answer || aborted; });
-        if(aborted) throw GameAborted{};
+
+        // BetContext has no handSize: the hand's size IS the round's trick
+        // count, and so the upper bound on a legal bid.
+        //
+        // roundType matters here beyond presentation. In Forehead and Hidden
+        // the bidder is not entitled to their own hand's contents - the engine
+        // still passes the real hand, having no other to give - so the prompt
+        // must not show it back to them.
+        bridge->raiseBetRequested(BetPrompt{ context.hand.size(),
+                                            context.forbiddenBet,
+                                            context.roundType,
+                                            context.isFirstPlayer,
+                                            snapshotHand(context.hand) });
+        cv.wait(lock, [this]{ return answer || abandoned; });
+        if(abandoned) throw GameAbandoned{};
         return static_cast<unsigned int>(*std::exchange(answer, std::nullopt));
     }
 
@@ -185,9 +272,14 @@ public:
         if(legal.empty()) return std::nullopt;
 
         std::unique_lock lock(mutex);
-        emit bridge->cardRequested(buildPlayPrompt(context, legal));
-        cv.wait(lock, [this]{ return answer || aborted; });
-        if(aborted) throw GameAborted{};
+        bridge->raiseCardRequested(buildPlayPrompt(context, legal));
+        cv.wait(lock, [this]{ return answer || abandoned; });
+        if(abandoned) throw GameAbandoned{};
+
+        // std::exchange clears it. Leaving it set means the next turn returns
+        // this same index without ever waiting, and the engine throws on the
+        // illegal play - see README.md, "Abandoning a game whose provider is
+        // parked".
         return *std::exchange(answer, std::nullopt);
     }
 
@@ -198,9 +290,9 @@ public:
         cv.notify_one();
     }
 
-    void abort()
+    void abandon()
     {
-        { std::lock_guard lock(mutex); aborted = true; }
+        { std::lock_guard lock(mutex); abandoned = true; }
         cv.notify_one();
     }
 
@@ -210,7 +302,7 @@ private:
     std::mutex mutex;
     std::condition_variable cv;
     std::optional<std::size_t> answer;
-    bool aborted = false;
+    bool abandoned = false;
 };
 ```
 
@@ -219,8 +311,14 @@ handler on the GUI thread is safe — and skipping Qt's event queue means the ga
 immediately.
 
 **Emitting a signal from a non-QObject:** `emit bridge->signalName(...)` will not compile, because
-signals are protected. Give `GameBridge` small public `raiseBetRequested()` / `raiseCardRequested()`
-forwarders, or declare `QtMoveProvider` a friend. The forwarder is cleaner.
+signals are protected. Hence the public `raiseBetRequested()` / `raiseCardRequested()` forwarders on
+`GameBridge` (§4.1), which is why the calls above are plain method calls with no `emit`. Declaring
+`QtMoveProvider` a friend would also work; the forwarder is cleaner.
+
+**`GameAbandoned` is the README's name for this**, and it is worth matching:
+[README.md](README.md) "Abandoning a game whose provider is parked" documents wake-and-throw as the
+supported way out of a parked provider, with this exact shape. `std::nullopt` is not an
+alternative — the engine reads it as "no legal play", which it treats as a bug.
 
 ### 4.3 `GameController` — owns the thread
 
@@ -229,7 +327,11 @@ class GameController : public QObject
 {
     Q_OBJECT
 public:
-    void start(GameSetup setup, int humanSeat);   // builds bridge + provider, spawns the thread
+    // GameSetup is MOVE-ONLY - it owns the seats' unique_ptr<IMoveProvider> -
+    // so every call site reads start(std::move(setup), seat). start() also
+    // moves from the setup before validating it, so a rejected setup cannot be
+    // retried: build a fresh one.
+    void start(GameSetup setup, Seat humanSeat);  // builds bridge + provider, spawns the thread
     void stop();                                  // see section 6
 
     GameBridge* bridge() const;                   // for MainWindow to connect to
@@ -246,8 +348,10 @@ private:
 Use the **worker-object pattern**, not a `QThread` subclass: create the objects, `moveToThread()`
 them, connect `QThread::started` to a slot that runs the game.
 
-The engine itself should be constructed *inside* that slot, so it is born, played and destroyed
-entirely on the game thread — the same reasoning as the web backend's `GameSession::threadMain()`.
+The engine itself must be constructed *inside* that slot, so it is born, played and destroyed
+entirely on the game thread. This is not a preference: [README.md](README.md) "Threading, stopping,
+and failure" opens with **one thread per engine, and no internal locking**, and `requestStop()` is
+the only member of the whole class that is safe to touch from elsewhere.
 
 ### 4.4 `MainWindow`
 
@@ -257,27 +361,51 @@ connect(bridge, &GameBridge::betRequested,  this, &MainWindow::showBetPrompt);
 connect(bridge, &GameBridge::cardRequested, this, &MainWindow::enableHand);
 connect(bridge, &GameBridge::trickWon,      this, &MainWindow::flashTrickWinner);
 connect(bridge, &GameBridge::gameOver,      this, &MainWindow::showStandings);
+connect(bridge, &GameBridge::gameStopped,   this, &MainWindow::close);
 
+// Field names follow the terminal's GameView (src/GameView.h), which is what
+// this type is modelled on - see section 9.
 void MainWindow::render(const GameSnapshot& s)      // a copy; the engine is untouched
 {
-    roundLabel->setText(tr("Round %1 of %2").arg(s.round.number).arg(s.round.count));
-    trumpWidget->setCard(s.trump);                  // std::optional<Card>
-    for(const SeatSnapshot& seat : s.seats)
-        seatPanels[seat.seat]->update(seat);
-    handWidget->setCards(s.hand);                   // engine order - never re-sort
-    trickWidget->setCards(s.table);
+    roundLabel->setText(tr("Round %1 of %2").arg(s.roundNumber).arg(s.roundCount));
+    trumpWidget->setCard(s.hasTrump, s.trump);      // no trump in an 8-card round
+    for(const SeatView& seat : s.seats)
+        seatPanels[seat.seatIndex]->update(seat);
+    handWidget->setEntries(s.hand);                 // HandEntry, not Card - see below
+    trickWidget->setCards(s.table);                 // PlayedCardView: seat, card, isWinning
 }
 
-void MainWindow::onCardClicked(std::size_t index)
+// handIndex runs parallel to the displayed hand: handIndex[i] is the position
+// in the ENGINE's hand of the card drawn at display slot i. Built alongside the
+// snapshot, thrown away and rebuilt on the next one.
+void MainWindow::onCardClicked(std::size_t displayPosition)
 {
     handWidget->setEnabled(false);                  // until the next stateChanged arrives
-    provider->submit(index);
+    provider->submit(handIndex[displayPosition]);   // back to an engine hand index
 }
 ```
 
-> **`handWidget->setCards(s.hand)` — the snapshot's hand order *is* the index contract.**
-> Re-sorting inside the widget silently sends the wrong card, exactly as it would in the web
-> client. Sort in `orderHandForDisplay()` on the engine side if you want a different order.
+> **Three orderings meet in the hand widget, and no two of them coincide.** The terminal hit this
+> first and solved it in `HandLayout` (`src/HandLayout.h`), whose header comment enumerates them:
+>
+> 1. the hand as the **engine** holds it — deal order, and what `playCard()`'s index must refer to;
+> 2. **display** order — trump suit first, then a fixed alternating-colour order, high rank first;
+> 3. the **clickable legal subset**, which is what the player actually picks from.
+>
+> `layOutHand()` returns cards in display order plus `choices`, where `choices[n - 1]` is the hand
+> position for the number the player types. **A GUI needs the mapping one step earlier:** a click
+> lands on a display slot, not on a typed number, so what this client wants is (2) → (1) over the
+> whole hand — the `handIndex` vector above — with (3) reduced to a `legal` flag that decides
+> whether the slot is clickable at all. `HandEntry` already carries that flag.
+>
+> Same idea, one indirection fewer. Carrying positions rather than cards is the whole trick:
+> sorting for display is fine and desirable, and it is only unsafe if the way back is not carried
+> with it. Getting it wrong means the player clicks one card and plays another, which no rule in
+> the engine would object to.
+>
+> An earlier draft of this document said "never re-sort" and pointed at an
+> `orderHandForDisplay()` on the engine side. **No such function exists**, and the prohibition was
+> the wrong fix for the right worry.
 
 ---
 
@@ -298,7 +426,23 @@ Qt 6 auto-registers in many cases, but explicit registration turns a silent runt
 argument of type X" warning into a compile-time guarantee.
 
 **Payload types must be copyable and default-constructible.** `GameSnapshot` already is — it is
-plain data. Keep it that way; do not add references or `unique_ptr` members to it.
+plain data. Keep it that way; do not add references or `unique_ptr` members to it. `Card` qualifies
+too (it has a default constructor). **`Seat` and `Standing` do not**: `Seat` is declared
+`explicit constexpr Seat(unsigned int)` with no default, and `Standing` holds one. So a bare `Seat`
+can never be a queued argument — carry `seat.index` instead. A `std::vector<Standing>` is fine,
+because the *vector* is default-constructible.
+
+**The GUI thread calls no engine method — none.** Not a getter, not `getStandings()`. Everything it
+needs arrives in a snapshot. `requestStop()` is the sole exception in the entire class, and even
+`addObserver()`/`removeObserver()` are explicitly not thread-safe.
+
+**The engine also guards against re-entrancy, and a GUI can trip it.** Both throw
+`std::logic_error` rather than corrupt state:
+
+- `addObserver()` / `removeObserver()` from inside any callback — the engine is mid-iteration over
+  its observer list. An observer that wants to detach sets a flag and is detached between rounds.
+- `run()` / `playRound()` from a move provider, or from any callback except `onGameStarted()`. A
+  callback that wants the game to end calls `requestStop()`.
 
 **Do not subclass `QThread`.** Worker-object pattern.
 
@@ -316,8 +460,8 @@ Closing the window while the game thread is parked inside `cv.wait` needs both h
 ```cpp
 void GameController::stop()
 {
-    engine->requestStop();     // ends cleanly at the next trick boundary
-    provider->abort();         // unblocks a provider parked mid-prompt
+    engine->requestStop();     // ends cleanly at the next round, bid or trick boundary
+    provider->abandon();       // unblocks a provider parked mid-prompt
     bridge->cancelPacing();    // unblocks an interruptible pace()
     thread.quit();
     thread.wait();             // join BEFORE anything else is destroyed
@@ -325,24 +469,39 @@ void GameController::stop()
 ```
 
 `requestStop()` alone is not enough — if the game thread is blocked waiting for a human bet, it
-never reaches a boundary at which to check the flag. Equally, `abort()` alone leaves a thread
-sleeping in `pace()` for up to `trickDwell`.
+never reaches a boundary at which to check the flag. The engine says so itself: *"It cannot
+interrupt a move provider already parked waiting for a human... Unparking that provider is the
+client's job, and throwing from it is the supported way out."* Equally, `abandon()` alone leaves a
+thread sleeping in `pace()` for up to `trickDwell`.
 
-`pace()` must therefore be an interruptible wait, not `QThread::sleep` or `std::this_thread::sleep_for`:
+**Which of the two lands decides what the observer sees**, and this is worth getting straight:
+
+| How it ended | What fires | State |
+|---|---|---|
+| `requestStop()` caught at a boundary | `onGameStopped()` — **not** `onGameOver()` | status `Stopped`, round left unscored, engine not resumable |
+| `GameAbandoned` thrown from a parked provider | nothing; the exception unwinds `run()` | engine mid-round, not resumable |
+| The game simply finished | `onGameOver()` | status `Finished` |
+
+So a window closed mid-game usually produces `onGameStopped()` or an exception, and *never*
+`onGameOver()` — a client that only handles `onGameOver()` is silent on the exact path it was
+written for. Note also that a stop requested once the final round has been scored is a **no-op**:
+the game stays `Finished` and `onGameOver()` is what fired.
+
+`pace()` must be an interruptible wait, not `QThread::sleep` or `std::this_thread::sleep_for`:
 
 ```cpp
 void GameBridge::pace(std::chrono::milliseconds delay)
 {
     std::unique_lock lock(pacingMutex);
     pacingCv.wait_for(lock, delay, [this]{ return pacingCancelled; });
-    if(pacingCancelled) throw GameAborted{};
+    if(pacingCancelled) throw GameAbandoned{};
 }
 ```
 
-`GameAborted` propagates out of the provider or observer, through `GameEngine::run()`, and is caught
-in the thread's run slot — the same unwind the terminal already uses for a closed stdin, and the
-web backend for a dropped socket. Per the v4 plan, an engine that throws out of `run()` is **not
-resumable**: destroy it.
+`GameAbandoned` propagates out of the provider or observer, through `GameEngine::run()`, and is
+caught in the thread's run slot. Per the engine's own contract, an engine that throws out of `run()`
+is **not resumable**: catch it outside `run()`, destroy the engine, and restore whatever you set up
+before the call, because nothing else will.
 
 ---
 
@@ -352,14 +511,14 @@ Minimum to play a full game:
 
 | Widget | Reads from snapshot |
 |---|---|
-| Setup dialog | *(writes)* builds a `GameSetup` — names, bot levels, structure, the two scoreboard flags |
-| Seat panel × N | `seats[i]`: name, bid (only when set), tricks won, cards left, round/total score, streak |
-| Trick area | `table` in play order, `isWinning` highlight, trump indicator |
-| Hand | `hand` in engine order; illegal cards dimmed and non-clickable |
-| Bet prompt | `handSize` range, `forbiddenBet` disabled with a tooltip explaining why |
+| Setup dialog | *(writes)* builds a `GameSetup` — names, bot levels, `structure`, `endWithForeheadAndHidden`, `all1GamesAreForehead`, and optionally `shuffleSeed`. `SetupWizard.h`'s `GameConfig` is the shape to copy |
+| Seat panel × N | `seats[i]`: `name`, `bet` (only when `hasBet`), `tricksWon`, `cardsLeft`, `roundScore`/`totalScore`, `winStreak`/`lossStreak`, `bidOrder` |
+| Trick area | `table` (`PlayedCardView`: `seatIndex`, `card`, `isWinning`) in play order; trump from `hasTrump`/`trump` |
+| Hand | `hand` (`HandEntry`: `card`, `legal`, `choice`) in display order; illegal cards dimmed and non-clickable. Other seats' hands come from `seats[i].hand`, non-empty only where `canSeeHand()` allows — a Forehead round |
+| Bet prompt | `0..context.hand.size()`; `forbiddenBet` disabled with a tooltip explaining why. **Blind in Forehead and Hidden** — do not show the bidder their own hand back |
 | Scoreboard | per-round bid/actual/score; `roundScored` is the signal to refresh it |
-| Status bar | round number, trick number, round type, whose turn |
-| Game over dialog | `getStandings()` |
+| Status bar | round number, trick number, `roundType`, whose turn (`turnChanged`) |
+| Game over dialog | `getStandings()` for the table **and `getWinners()` for the headline**. A drawn game has more than one winner and `standings.front()` names only one of them; the terminal renders it as a draw |
 
 **Widgets vs QML:** `QGraphicsScene` / `QGraphicsView` is the natural fit for a card table — card
 items are movable, animatable, and hit-testable for free, and `QGraphicsItem` animation covers
@@ -378,17 +537,23 @@ nothing.
 
 Each ends in something runnable.
 
-**Phase A — spectator window.** All-bot game, no input. Setup hardcoded. `GameController` +
-`GameBridge` + `MainWindow::render`. Proves the thread boundary, the snapshot marshalling and the
-metatype registration — the three things most likely to be subtly wrong. *Verify:* a full game
-plays out on screen, the window stays responsive throughout, and closing it mid-game exits cleanly.
+**Phase A — spectator window.** All-bot game, no input. Setup hardcoded, with a fixed
+`shuffleSeed` so a misrender is reproducible. `GameController` + `GameBridge` +
+`MainWindow::render`. Proves the thread boundary, the snapshot marshalling and the metatype
+registration — the three things most likely to be subtly wrong. *Verify:* a full game plays out on
+screen, the window stays responsive throughout, and closing it mid-game exits cleanly through
+`onGameStopped()` with no leaked thread. Note the parked-provider half of §6 cannot be exercised
+here — an all-bot game never parks — which is why B repeats the shutdown test.
 
 **Phase B — the human seat.** `QtMoveProvider`, the bet prompt, the clickable hand. This is the
 hard part; A exists to make it the only hard part. *Verify:* play a full game; confirm illegal
-cards cannot be clicked and the forbidden bid is disabled.
+cards cannot be clicked, the forbidden bid is disabled, the card clicked is the card played (the
+`HandLayout` translation of §4.4), and closing the window **while the bet prompt is open** exits
+cleanly — that is the `GameAbandoned` path, and it is the one §6 exists for.
 
 **Phase C — setup dialog and scoreboard.** `GameSetup` from a real dialog, per-round score table,
-game-over standings.
+game-over standings and winners. *Verify:* a game deliberately ended in a draw announces both
+seats.
 
 **Phase D — polish.** Card animation, pacing controls, round-type presentation (Forehead/Hidden),
 keyboard shortcuts, window state persistence via `QSettings`.
@@ -397,34 +562,53 @@ keyboard shortcuts, window state persistence via `QSettings`.
 
 ## 9. A design question this raises for the engine
 
-`GameSnapshot` and `refreshFromEngine()` currently live in the *terminal client*
-(`GameView.{h,cpp}`), and the v4 plan has each client build its own.
+**Still open.** Nothing was promoted into the engine during v4, so the snapshot type still lives
+only in the terminal — as `struct GameView` with `refreshFromEngine(GameView&, const GameEngine&)`
+in `GameView.{h,cpp}`. (Earlier drafts of this document called it `GameSnapshot`; that is this
+client's name for its own copy, not the terminal's.)
 
-**With a third client, that stops being obviously right.** All three need the same snapshot of the
-same state, and two of the three (Qt, web) need it specifically because they must not read the
-engine off-thread. Three hand-maintained copies of the same struct is the same duplication problem
-the v4 refactor exists to solve, one level up.
+**With a second client, sharing it stops being obviously optional.** Both need the same snapshot of
+the same state, and this one needs it specifically because it must not read the engine off-thread.
 
-**Recommendation: promote `GameSnapshot` + `refreshFromEngine()` into the engine** as
-`romanian_whist::GameSnapshot`, alongside `orderHandForDisplay()`. It is plain data with no UI
-dependency, it is exactly what "read the state safely" means for any client, and it gives the Qt
-and web clients a supported way to cross a thread boundary instead of each inventing one.
+But `GameView` has since accumulated fields the engine has no business owning, and that changes the
+answer from the one an earlier draft gave:
 
-This is a small addition to v4 phase 2 and should be decided before the Qt client starts, not
-after.
+| Engine-derivable — could move | Client-only — could not |
+|---|---|
+| round number/count, trick number/count, `roundType` | `message`, `hint`, `error` |
+| `hasTrump`/`trump`, `leadSuit` | `elapsedMinutes` (the engine has no wall clock) |
+| per-seat name, bet, tricks won, cards left, scores, streaks, bid order | `HandEntry::choice` (a typed keyboard number) |
+| `table` from `getCurrentTrick()`, with the `isWinning` highlight | `Phase`, a UI phase distinct from `GamePhase` |
+| per-seat visible hands via `canSeeHand()` | `humanSeat`, `activeSeat`, display ordering |
+
+`refreshFromEngine()`'s own header comment already draws that line: *"A pure function of the engine.
+What is left to the caller is only what the engine does not model."*
+
+**Revised recommendation: promote the left column only**, as `romanian_whist::GameSnapshot` plus a
+`snapshotFrom(const GameEngine&)`, and let each client wrap it in whatever view type it needs. The
+left column is exactly what "read the state safely off-thread" means; the right column is UI and
+belongs in the UI. `layOutHand()` stays client-side with it — the display ordering it produces is a
+presentation choice, not an engine one.
+
+Worth deciding before this client starts, since it determines whether `GameSnapshot` here is a new
+struct or a thin wrapper. It is not a blocker either way: building it client-side first and
+promoting the common part afterwards is a legitimate order.
 
 ---
 
 ## 10. Comparison: the three clients on one engine
 
-| | Terminal | Qt | Web |
+Terminal exists; Qt is this document; **web is still hypothetical** and its column is what the
+shape would be, not a description of code.
+
+| | Terminal *(built)* | Qt *(this document)* | Web *(hypothetical)* |
 |---|---|---|---|
 | Engine runs on | main thread | `QThread` worker | session thread |
 | Observer does | draws directly | snapshot → signal | snapshot → JSON |
-| Marshalling | none needed | `QueuedConnection` | `queueInLoop` |
+| Marshalling | none needed | `QueuedConnection` | post to the event loop |
 | Provider blocks on | `std::cin` | condition variable | condition variable |
 | Unblocked by | keypress | click | WebSocket frame |
-| Cancellation | EOF → exception | `stop()` → exception | disconnect → exception |
+| Cancellation | EOF → exception | `requestStop()` + `GameAbandoned` | disconnect → exception |
 | Rules implemented | none | none | none |
 
 The last row is the point.
@@ -433,14 +617,36 @@ The last row is the point.
 
 ## 11. Reference files
 
+**Engine (this repository), at 4.1.0:**
+
 - [README.md](README.md) — the API surface this is written against. "Threading, stopping, and
-  failure" is the contract §3 and §6 below work through; "Watching a game" is the callback order.
+  failure" is the contract §3 and §6 work through, and it points back here for the worked example;
+  "Abandoning a game whose provider is parked" is §4.2's exception, under its canonical name;
+  "Watching a game" is the callback order.
+- [CHANGELOG.md](CHANGELOG.md) — 4.1.0 added `Standing::place` and `getWinners()`, which §7's
+  game-over row depends on.
+- `include/romanian_whist/IGameObserver.h` — all thirteen callbacks, and exactly what is readable
+  from each. §4.1 implements twelve of them and defaults the rest.
+- `include/romanian_whist/Seat.h` — why a seat is a struct, and why that is deliberate.
+- `include/romanian_whist/GameEngine.h` — `GameSetup`, `Standing`, and the re-entrancy rules on
+  `addObserver()`/`run()` noted in §5.
 - [ENGINE_V4_PLAN.md](ENGINE_V4_PLAN.md) — why the engine has that shape; §3 is the design
   rationale behind the README's surface.
-- `../romanian_whist_terminal/src/GameView.{h,cpp}` — `GameSnapshot` and `refreshFromEngine()`,
-  reused here (see §9).
-- `../romanian_whist_terminal/src/TerminalRomanianWhist.cpp` — the post-v4 observer shape, in its
-  simplest form (no thread boundary).
-- `../romanian_whist_terminal/src/SetupWizard.h` — `GameConfig`, the shape the setup dialog builds.
-- `../romanian_whist_terminal/CMakeLists.txt` — the submodule guard + `add_subdirectory` +
-  `RomanianWhist::engine` pattern to copy.
+
+**Terminal client (`../romanian_whist_terminal`), at 2.2.0:**
+
+- `src/GameView.{h,cpp}` — `struct GameView` and `refreshFromEngine()`: the snapshot this client's
+  `GameSnapshot` is modelled on (see §9).
+- `src/HandLayout.{h,cpp}` — `layOutHand()` and `HandLayout::choices`, the display-order↔engine-index
+  translation §4.4 depends on. Its header comment is the best statement of the problem anywhere in
+  either repository.
+- `src/Pacer.{h,cpp}` — the pacing behaviour §4.1's `Pacing` struct borrows its delays from,
+  including the skip mechanism this client does not have yet.
+- `src/TerminalRomanianWhist.cpp` — the post-v4 observer shape in its simplest form, with no thread
+  boundary. Note it draws the game-over screen *after* `run()` returns rather than from
+  `onGameOver()`, which a GUI cannot do.
+- `src/ConsoleMoveProvider.cpp` — the other `IMoveProvider`, including the blind bid prompt that
+  §7's Forehead/Hidden row calls for.
+- `src/SetupWizard.h` — `GameConfig`, the shape the setup dialog builds.
+- `CMakeLists.txt` — the submodule guard + `add_subdirectory` + `RomanianWhist::engine` pattern to
+  copy, still current.
