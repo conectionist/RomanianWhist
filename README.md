@@ -634,8 +634,8 @@ void onCardPlayed(const GameEngine& engine, Seat, const Card&) override
 
 Never hand another thread a `const GameEngine&`, a `const Round&`, a `const Player&`, or a pointer
 into anything the engine owns. A cross-thread read racing a deal is a torn read of a hand — a card
-half-removed, a vector resized under a loop. [QT_CLIENT_PLAN.md](QT_CLIENT_PLAN.md) §3–4 works
-this out end to end: engine on a worker thread, observer snapshots and emits queued signals, move
+half-removed, a vector resized under a loop. The Qt client's
+[QT_CLIENT_PLAN.md](https://github.com/conectionist/romanian_whist_desktop/blob/master/docs/QT_CLIENT_PLAN.md) §3–4 works this out end to end: engine on a worker thread, observer snapshots and emits queued signals, move
 provider parked on a condition variable until a click. A web backend is the same shape with an
 HTTP request in place of the click, at the cost of one parked thread per game in progress.
 
@@ -755,5 +755,6 @@ docs/RULES.md               the rules this engine implements
 
 - [romanian_whist_terminal](https://github.com/conectionist/romanian_whist_terminal) —
   terminal UI client
-- [QT_CLIENT_PLAN.md](QT_CLIENT_PLAN.md) — a planned Qt desktop client, and the worked example of
-  running the engine on a thread of its own
+- [romanian_whist_desktop](https://github.com/conectionist/romanian_whist_desktop) —
+  Qt desktop client. Its [QT_CLIENT_PLAN.md](https://github.com/conectionist/romanian_whist_desktop/blob/master/docs/QT_CLIENT_PLAN.md)
+  is the worked example of running the engine on a thread of its own

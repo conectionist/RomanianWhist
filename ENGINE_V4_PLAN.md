@@ -790,8 +790,8 @@ final scoreboard in the scrollback — and the destructor covers the throwing on
 **A Qt or web client has neither half.** Nothing in a slot or a request handler unwinds a
 half-built UI by itself, and wake-and-throw is the *routine* way those clients end a game — a
 closed window, a dropped session — rather than a rare failure. Phase 6 point 3 documents the
-contract; the clients have to act on it. `QT_CLIENT_PLAN.md` is where the worker thread's catch
-belongs.
+contract; the clients have to act on it. [QT_CLIENT_PLAN.md](https://github.com/conectionist/romanian_whist_desktop/blob/master/docs/QT_CLIENT_PLAN.md)
+is where the worker thread's catch belongs.
 
 ### 3.8 Threading and blocking: the contract
 
@@ -824,7 +824,7 @@ Each planned client resolves this differently, and all three are compatible with
 | Client | How it copes |
 |---|---|
 | Terminal | Nothing to do. Its "UI" is a blocking `std::cin`, so the game thread and the UI thread are the same thread, and the block *is* the prompt. |
-| Qt | Engine on a worker thread; observer snapshots by value on the game thread and emits queued signals; the move provider parks on a condition variable until a click calls `submit()`. Spelled out in [QT_CLIENT_PLAN.md](QT_CLIENT_PLAN.md) §3-4. |
+| Qt | Engine on a worker thread; observer snapshots by value on the game thread and emits queued signals; the move provider parks on a condition variable until a click calls `submit()`. Spelled out in [QT_CLIENT_PLAN.md](https://github.com/conectionist/romanian_whist_desktop/blob/master/docs/QT_CLIENT_PLAN.md) §3-4. |
 | Web | Thread per in-progress game, same shape as Qt: the provider parks until the move arrives over HTTP. Costs a parked thread per active game, which is acceptable at this scale — but it is a *choice*, and the timeout policy belongs to the backend, not the engine. |
 
 **Why this does not paint us into a corner.** If a future client ever needs a non-blocking engine
@@ -1504,7 +1504,8 @@ trick. Phase 6 only writes them down.
   a move, and `std::nullopt` means "no legal play", which the engine treats as a bug. So **the
   supported shutdown for a parked provider is to wake it and let it throw**, taking the
   not-resumable path above — correct, since the game is being discarded anyway. Clients need
-  both halves; §3.8 point 4 states the contract and QT_CLIENT_PLAN.md is where it gets built.
+  both halves; §3.8 point 4 states the contract and
+  [QT_CLIENT_PLAN.md](https://github.com/conectionist/romanian_whist_desktop/blob/master/docs/QT_CLIENT_PLAN.md) is where it gets built.
 - Nothing here is exception-safe in the strong sense, and it does not need to be. Say so, so a
   future reader does not assume a guarantee that was never designed for.
 
@@ -2431,7 +2432,8 @@ documented, and a future web backend's observer must not block on network I/O.
 refactor** — not the observer. A human's provider parks until they answer, so every GUI and web
 client needs a thread per in-progress game and a way to unpark a provider on shutdown — which is
 a wake-and-throw, since a provider has no non-throwing way to abandon a turn. §3.8 point 4 states
-the contract and [QT_CLIENT_PLAN.md](QT_CLIENT_PLAN.md) works it through. The mitigation against
+the contract and [QT_CLIENT_PLAN.md](https://github.com/conectionist/romanian_whist_desktop/blob/master/docs/QT_CLIENT_PLAN.md) works it
+through. The mitigation against
 being wrong about this is Phase 2's rule that round state lives in engine members: it keeps a
 non-blocking `playStep()` an additive change rather than a rewrite. Do not let that rule slip.
 
@@ -2549,5 +2551,7 @@ and it is in the only place a behaviour change was ever intended.
   `getCurrentTrickLeader()` instead of ranking the trick itself.
 - `include/romanian_whist/PlayerList.h` — `std::list<Player>`, whose only reason to be a list is
   the iterator stability Phase 1 stops needing.
-- `QT_CLIENT_PLAN.md` — §3-4 are the worked example of the threading contract in §3.8, and the
-  reason that contract has to be stated in this document rather than discovered in that one.
+- [QT_CLIENT_PLAN.md](https://github.com/conectionist/romanian_whist_desktop/blob/master/docs/QT_CLIENT_PLAN.md) — in the
+  desktop client's repository since that client got one of its own. §3-4 are the worked example of
+  the threading contract in §3.8, and the reason that contract has to be stated in this document
+  rather than discovered in that one.
