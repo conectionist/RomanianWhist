@@ -64,9 +64,14 @@ std::optional<Card> Player::playCard(std::optional<Card> trump,
 
 unsigned int Player::getBet(std::optional<Card> trump,
                             bool isFirstPlayer,
-                            std::optional<unsigned int> forbiddenBet) const
+                            std::optional<unsigned int> forbiddenBet,
+                            RoundType roundType) const
 {
-    return moveProvider->makeBet(BetContext{hand, trump, isFirstPlayer, forbiddenBet});
+    return moveProvider->makeBet(BetContext{.hand = hand,
+                                            .trump = trump,
+                                            .isFirstPlayer = isFirstPlayer,
+                                            .forbiddenBet = forbiddenBet,
+                                            .roundType = roundType});
 }
 
 int Player::getTotalScore() const

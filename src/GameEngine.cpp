@@ -295,7 +295,8 @@ bool GameEngine::runBidding()
 
         // Asked fresh each time round: getForbiddenBet() only names a value
         // once everyone but the last player has bid.
-        const unsigned int bet = player.getBet(getCurrentTrumpCard(), i == 0, getForbiddenBet());
+        const unsigned int bet = player.getBet(getCurrentTrumpCard(), i == 0, getForbiddenBet(),
+                                               getCurrentRoundType());
 
         // The engine is the one asking now, so it is the one that has to judge
         // the answer. Legality used to live entirely in the providers, which is
