@@ -2352,6 +2352,67 @@ them where a client author will find them.
 7. Merge `engine-v4` to `master` and move the terminal client's submodule pin onto a master SHA
    (§4). Update its README.
 
+#### Outcome
+
+All seven steps landed, but two of them were wrong before the phase began and are worth recording
+as written rather than quietly fixed — a phase list that turns out to be wrong at the end is the
+same evidence as one that was right, and only one of the two survives being edited.
+
+**Step 1 understated the damage by an order of magnitude.** It asks to "replace the *the engine
+does not own the loop* section". In fact every code sample under `## Usage` — lines 94-320, the
+whole second half of the README — named an API that had been private or deleted since Phase 2:
+`Card*` returns, `addPlayer`/`initializeScoreboard`/`initializeDeck`, the hand-written
+`while(isInProgress())` loop, `getPlayerScores()`, name-keyed `round.hasBet(name)`,
+`Round::getOpeningPlayer()`/`getFirstPlayer()`/`setFirstPlayerOfTheRound()`. The README was
+rewritten around the two seams rather than patched, and restructured in the order a client author
+meets them.
+
+**Step 4's analogy was half wrong, and it was the load-bearing half.** It says the hand-visibility
+note should make "the same *make it inexpressible* argument Phase 4 makes for the index". Phase 4's
+index makes a fabricated card inexpressible **in the engine**. `canSeeHand()` cannot do that, and
+§3.6 says so itself two paragraphs earlier — "a speed bump, not a wall" — because `getPlayers()`
+and `Player::getHand()` are public and have to stay public for the renderer. Writing the analogy
+as given would have published a guarantee the engine does not make, in the one section where a
+backend author is deciding how much to trust it. The README makes the weaker, true claim instead:
+one serializer that takes a viewer makes an invisible card inexpressible **in your backend**,
+which is the boundary that client controls.
+
+**Step 5 named two gaps; there were three.** `initialize()` being disabled was the third, closed
+by Phase 3.
+
+**Step 7 was moot.** Every phase landed as a squashed PR straight onto `master`, so there was no
+`engine-v4` branch to merge and the client's submodule already tracked master. What survived of
+the step was the client README, the re-pin, and a client version bump. §4's rule about never
+landing an engine phase ahead of its client migration does not bind here either: this phase
+changes no engine behaviour, so it cannot strand the client.
+
+Two amendments to the phase's scope, both deliberate:
+
+- **`docs/RULES.md` is new.** `IMPLEMENTATION_PLAN.md` was archived to `docs/archive/` rather than
+  merely ticked — it was ~60% archaeology and wrong in four more places than the three gaps. But
+  that document was the stated authority on the *rules*, so archiving it would have archived them.
+  The eight rule decisions were lifted into `docs/RULES.md` first, each now naming the code that
+  implements it.
+- **The README quick start is compiled**, as `tests/ReadmeQuickStartTests.cpp`, which is engine
+  code in a phase that promised none. The justification is the phase itself: the README went stale
+  for a year across four API-breaking phases and nothing caught it, because nothing could. It
+  rides `WHIST_BUILD_TESTS`, so no consumer builds it.
+
+Two documents were stale in ways this phase never anticipated, both fixed here:
+
+- **`STRATEGIES.md` documented a field that never existed.** Its "Describes v3" banner promised
+  `BetContext::handSize` as the legal bid range in Forehead and Hidden rounds — written from an
+  early draft of §3.6 that had the engine blind the hand. §3.6 dropped that idea before Phase 5
+  ran, and what shipped was `roundType` plus the real hand. The banner is deleted rather than
+  updated.
+- **Its "writing your own" example would not compile**, returning `Card*`/`nullptr` against an
+  `IStrategy::getBestChoice` that has returned `std::optional<Card>` since Phase 4.
+
+One thing that looks like a defect and is not: the §4 table's Phase 1 row cites
+`GameEngine::getPlayer(Seat)`, which no longer exists. That row records what Phase 1 did, and
+`getPlayer(Seat)` was a deliberate Phase 1 temporary that §3.3 says Phase 2 removes. It is
+accurate as history and was left alone.
+
 ---
 
 ## 6. Risks
