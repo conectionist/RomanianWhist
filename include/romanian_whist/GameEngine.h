@@ -328,8 +328,9 @@ public:
     // for them too when the bids already exceed the trick count, since no bid
     // can bring the total back down to it.
     //
-    // Ask either of these before calling placeBet(), which records whatever it
-    // is given without judging it.
+    // These are for prompting: the engine validates every bid it is given and
+    // throws on an illegal one, so a client asks first in order to re-prompt a
+    // human, rather than to keep the game alive.
     std::optional<unsigned int> getForbiddenBet() const;
     bool isBetLegal(unsigned int bet) const;
 
