@@ -355,12 +355,22 @@ class MyStrategy : public romanian_whist::IStrategy
 public:
     unsigned int getBestBet(const romanian_whist::BetContext& context) override
     {
-        // A Forehead or Hidden round says this hand may not be read to bid on.
-        if(context.roundType != romanian_whist::RoundType::Normal)
-            return 0;
+        // A Forehead or Hidden round says this hand may not be read to bid on,
+        // so there is nothing to count and the bid is 0.
+        unsigned int bet =
+            context.roundType == romanian_whist::RoundType::Normal
+                ? romanian_whist::heuristics::countLikelyWinners(context.hand, context.trump)
+                : 0u;
 
-        // Honour *context.forbiddenBet whenever it is set and the bid is legal.
-        return 0;
+        // The barred bid applies to every round, blind ones included, and the
+        // engine throws std::logic_error on it - so step off it last, after
+        // every other consideration has had its say. Stepping down from 0 is
+        // not an option, and a round always has at least one trick, so 1 is
+        // always legal there.
+        if(context.forbiddenBet && bet == *context.forbiddenBet)
+            bet = (bet == 0u) ? 1u : bet - 1u;
+
+        return bet;
     }
 
     std::optional<romanian_whist::Card> getBestChoice(
@@ -394,8 +404,9 @@ And one that is easy to miss:
    still hands you the **real** hand — it has no other one to give — but the round says the
    bidder cannot see it. A strategy that reads it anyway is bidding on information it is not
    supposed to have. `LowRiskStrategy::getBestBet` (`src/strategies/LowRiskStrategy.cpp`) is
-   the one bundled strategy this affects, and it bids 0 rather than counting winners. The
-   other three never read the hand to bid, so they need no guard.
+   the one bundled strategy this affects, and it bids 0 rather than counting winners — then
+   still steps to 1 if 0 is the barred bid, because a blind round bars a bid like any other.
+   The other three never read the hand to bid, so they need no guard.
 
 Both `getBestBet` and `getBestChoice` are pure functions of their arguments, so a
 deterministic strategy can be tested without standing up a `GameEngine` at all.

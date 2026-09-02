@@ -197,8 +197,10 @@ public:
     // finished one it would replay a schedule whose scores are already counted.
     //
     // The whole setup is validated before any of it is applied, so a rejected
-    // start() leaves the engine untouched and still NotStarted: a client that
-    // catches the error can fix the setup and call start() again.
+    // start() leaves the engine untouched and still NotStarted, ready to be
+    // started again. The caller's GameSetup is not: taking it by value moves
+    // from it - emptying seats, destroying the move providers - before any
+    // validation runs, so a retry has to build a fresh one.
     //
     // Firing onGameStarted() is the last thing it does, so register every
     // observer first. The engine is set up but not yet dealt at that point -

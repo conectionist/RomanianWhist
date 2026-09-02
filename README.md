@@ -243,8 +243,13 @@ game.start(std::move(setup));
 
 `start()` throws `std::invalid_argument` if the setup is not playable — fewer than 2 or more than
 6 seats, an empty name, or two names equal byte for byte. It validates the whole setup before
-applying any of it, so a rejected `start()` leaves the engine untouched and still `NotStarted`:
-catch the error, fix the setup, call it again.
+applying any of it, so a rejected `start()` leaves the **engine** untouched and still
+`NotStarted`, ready to be started again.
+
+The `GameSetup` does not survive the attempt. `start()` takes it **by value**, so
+`start(std::move(setup))` empties `setup.seats` — destroying the move providers it owned — before
+validation so much as runs. Retrying means building a fresh `GameSetup`, new move providers
+included; there is nothing left in the old one to fix up.
 
 **Register observers before `start()`.** `onGameStarted()` fires from inside it, and an observer
 registered afterwards has already missed the game beginning.
@@ -409,6 +414,9 @@ engine's public API; "none" is an empty `std::optional`.
 ```cpp
 #include <romanian_whist/CardValidator.h>
 
+#include <algorithm>
+#include <stdexcept>
+
 std::optional<std::size_t> playCard(const romanian_whist::PlayContext& context) override
 {
     romanian_whist::CardValidator validator;
@@ -424,6 +432,13 @@ std::optional<std::size_t> playCard(const romanian_whist::PlayContext& context) 
 
     // getLegalCards returns a filtered copy, so translate back to a hand position.
     const auto position = std::find(context.hand.begin(), context.hand.end(), chosen);
+
+    // legal is a subset of hand, so this only trips if askUserToPick returned a
+    // card it was never offered. Do not hand the engine end() - std::nullopt
+    // means "no legal play", which is a different bug from this one.
+    if(position == context.hand.end())
+        throw std::logic_error("picked a card that is not in the hand");
+
     return static_cast<std::size_t>(std::distance(context.hand.begin(), position));
 }
 ```
@@ -645,7 +660,11 @@ std::optional<std::size_t> playCard(const PlayContext&) override
     if(abandoned)
         throw GameAbandoned{};      // propagates out of run()
 
-    return submitted;
+    // Take the move and clear it, or the next turn returns this same index
+    // without ever waiting - and the engine throws on the illegal play.
+    const std::optional<std::size_t> chosen = submitted;
+    submitted.reset();
+    return chosen;
 }
 ```
 
